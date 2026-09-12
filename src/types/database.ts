@@ -605,3 +605,33 @@ export interface AuditEntry {
    */
   diff: Record<string, unknown> | null
 }
+
+// =============================================================================
+// Opening balances and quotations
+// =============================================================================
+
+export type OpeningBalancePartyType = 'client' | 'broker' | 'driver'
+
+export interface OpeningBalance extends Timestamps {
+  id: string
+  business_id: string
+  party_type: OpeningBalancePartyType
+  party_id: string
+  /** Positive = the party owes the business. Negative = the business owes them. */
+  amount: number
+  as_of_date: string
+}
+
+export type QuotationStatus = 'open' | 'accepted' | 'rejected' | 'expired'
+
+export interface Quotation extends Timestamps {
+  id: string
+  business_id: string
+  party_type: PartyType
+  party_id: string
+  route: string | null
+  expected_goods: string | null
+  quoted_rate: number | null
+  validity_date: string | null
+  status: QuotationStatus
+}

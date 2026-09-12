@@ -78,4 +78,8 @@ export const queryKeys = {
   myInvite: ['my-invite'] as const,
   audit: (businessId: string, filters?: unknown) =>
     ['audit', businessId, filters ?? null] as const,
+
+  openingBalances: (businessId: string) => ['opening-balances', businessId] as const,
+  quotations: (businessId: string, status?: unknown) =>
+    ['quotations', businessId, status ?? null] as const,
 } as const

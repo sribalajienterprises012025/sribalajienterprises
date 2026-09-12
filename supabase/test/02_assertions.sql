@@ -834,3 +834,139 @@ select pg_temp.expect('owner B sees no invites of A',
   (select count(*)::int from public.invites), 0);
 
 reset role;
+
+-- =============================================================================
+-- Opening balances, quotations and documents
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+-- The broker had no opening balance, so this is a clean starting point.
+-- Negative means the business owes them.
+insert into public.opening_balances (business_id, party_type, party_id, amount, as_of_date)
+values (:'biz_a', 'broker', :'brk_a', -4000, '2025-04-01');
+
+select pg_temp.expect('broker opening balance is recorded',
+  (select opening_balance::numeric from public.broker_ledger where broker_id = :'brk_a'),
+  -4000::numeric);
+
+-- A party has one opening position, not a history of them. A second insert on
+-- the same key must replace, not add a row the ledger would double-count.
+insert into public.opening_balances (business_id, party_type, party_id, amount, as_of_date)
+values (:'biz_a', 'broker', :'brk_a', -6500, '2025-04-01')
+on conflict (business_id, party_type, party_id)
+  do update set amount = excluded.amount, as_of_date = excluded.as_of_date;
+
+select pg_temp.expect('an opening balance is replaced, not duplicated',
+  (select count(*)::int from public.opening_balances
+   where party_type = 'broker' and party_id = :'brk_a'), 1);
+select pg_temp.expect('the replaced opening balance is the one used',
+  (select opening_balance::numeric from public.broker_ledger where broker_id = :'brk_a'),
+  -6500::numeric);
+
+select pg_temp.expect_denied('an unknown opening-balance party type is rejected',
+  format('insert into public.opening_balances (business_id, party_type, party_id, amount, as_of_date)
+          values (%L, ''vendor'', %L, 100, current_date)', :'biz_a', :'cli_a'));
+
+-- Quotations: owner writes, helper reads only.
+insert into public.quotations (
+  business_id, party_type, party_id, route, expected_goods, quoted_rate, validity_date
+) values (
+  :'biz_a', 'client', :'cli_a', 'Hyderabad to Nagpur', 'Cement, 16T loads',
+  48000, current_date + 30
+);
+select pg_temp.expect('a quotation defaults to open',
+  (select status from public.quotations where route = 'Hyderabad to Nagpur'), 'open');
+select pg_temp.expect_denied('an unknown quotation status is rejected',
+  'update public.quotations set status = ''maybe'' where route = ''Hyderabad to Nagpur''');
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect('helper can read quotations',
+  (select count(*)::int from public.quotations), 1);
+select pg_temp.expect_denied('helper cannot create a quotation',
+  format('insert into public.quotations (business_id, party_type, party_id, route)
+          values (%L, ''client'', %L, ''Sneaky route'')', :'biz_a', :'cli_a'));
+
+-- Documents: a helper attaches a proof of delivery, only under their own
+-- business folder, and only the owner can remove it.
+insert into public.documents (business_id, owner_type, owner_id, file_url, doc_type)
+values (
+  :'biz_a', 'trip', :'trip1',
+  'aaaaaaaa-0000-0000-0000-00000000000a/trip/77777777-0000-0000-0000-000000000001/pod.jpg',
+  'Proof of delivery'
+);
+select pg_temp.expect('helper can attach a document record',
+  (select count(*)::int from public.documents where owner_id = :'trip1'), 1);
+
+insert into storage.objects (bucket_id, name)
+values ('documents',
+  'aaaaaaaa-0000-0000-0000-00000000000a/trip/77777777-0000-0000-0000-000000000001/pod.jpg');
+select pg_temp.expect('helper can upload under their own business folder',
+  (select count(*)::int from storage.objects
+   where name like '%/trip/77777777-0000-0000-0000-000000000001/%'), 1);
+
+select pg_temp.expect_denied('helper cannot upload under another business folder',
+  'insert into storage.objects (bucket_id, name)
+   values (''documents'', ''bbbbbbbb-0000-0000-0000-00000000000b/trip/x/stolen.jpg'')');
+
+select pg_temp.expect_no_write('helper cannot delete a stored file',
+  'delete from storage.objects
+   where name like ''%/trip/77777777-0000-0000-0000-000000000001/%''',
+  'select count(*)::text from storage.objects
+   where name like ''%/trip/77777777-0000-0000-0000-000000000001/%''',
+  '1');
+
+-- Recording a POD on the trip is what the compliance report reads.
+update public.trips
+set pod_file_url = 'aaaaaaaa-0000-0000-0000-00000000000a/trip/77777777-0000-0000-0000-000000000001/pod.jpg'
+where id = :'trip1';
+-- The POD was this trip's last remaining gap (it already had an LR, an e-way
+-- bill and an invoice), so recording one drops it out of the report entirely
+-- rather than leaving it listed with every flag clear.
+select pg_temp.expect('a trip with nothing missing leaves the compliance report',
+  (select count(*)::int from public.compliance_gaps where trip_id = :'trip1'), 0);
+
+-- A CA reads the paperwork but attaches nothing.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'ca_a', false);
+select pg_temp.expect('CA can read documents',
+  (select count(*)::int from public.documents), 1);
+select pg_temp.expect_denied('CA cannot attach a document',
+  format('insert into public.documents (business_id, owner_type, owner_id, file_url)
+          values (%L, ''trip'', %L, ''x/y/z.jpg'')', :'biz_a', :'trip1'));
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_b', false);
+select pg_temp.expect('owner B sees no documents of A',
+  (select count(*)::int from public.documents), 0);
+select pg_temp.expect('owner B sees no quotations of A',
+  (select count(*)::int from public.quotations), 0);
+select pg_temp.expect('owner B sees no opening balances of A',
+  (select count(*)::int from public.opening_balances), 0);
+
+reset role;
+
+-- The documents policies must match the storage policies exactly: a helper
+-- attaches, only the owner removes. When these two disagree, an upload lands
+-- in the bucket and is then refused its metadata row.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect_no_write('helper cannot delete a document record',
+  format('delete from public.documents where owner_id = %L', :'trip1'),
+  format('select count(*)::text from public.documents where owner_id = %L', :'trip1'),
+  '1');
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+delete from public.documents where owner_id = :'trip1';
+select pg_temp.expect('owner can delete a document record',
+  (select count(*)::int from public.documents where owner_id = :'trip1'), 0);
+
+reset role;

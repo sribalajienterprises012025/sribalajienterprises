@@ -21,6 +21,8 @@ import { listVehicles } from '@/lib/queries/vehicles'
 import type { Driver } from '@/types'
 import { DriverForm } from './DriverForm'
 import { DriverMoneySheet } from './DriverMoneySheet'
+import { DocumentsSheet } from '@/components/DocumentsSheet'
+import { OpeningBalanceSheet } from '@/features/parties/OpeningBalanceSheet'
 
 export function DriversPage() {
   const businessId = useBusinessId()
@@ -32,6 +34,8 @@ export function DriversPage() {
   const [editing, setEditing] = useState<Driver | null>(null)
   const [deleting, setDeleting] = useState<Driver | null>(null)
   const [moneyFor, setMoneyFor] = useState<Driver | null>(null)
+  const [docsFor, setDocsFor] = useState<Driver | null>(null)
+  const [openingFor, setOpeningFor] = useState<Driver | null>(null)
 
   const driversQuery = useQuery({
     queryKey: queryKeys.drivers(businessId),
@@ -163,6 +167,9 @@ export function DriversPage() {
                   <Button variant="secondary" size="sm" onClick={() => setMoneyFor(driver)}>
                     Advances &amp; salary
                   </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setDocsFor(driver)}>
+                    Papers
+                  </Button>
                   {isOwner && (
                     <>
                       <Button
@@ -174,6 +181,13 @@ export function DriversPage() {
                         }}
                       >
                         Edit
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setOpeningFor(driver)}
+                      >
+                        Opening balance
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setDeleting(driver)}>
                         Remove
@@ -201,6 +215,24 @@ export function DriversPage() {
 
       {moneyFor && (
         <DriverMoneySheet driver={moneyFor} onClose={() => setMoneyFor(null)} />
+      )}
+
+      {docsFor && (
+        <DocumentsSheet
+          ownerType="driver"
+          ownerId={docsFor.id}
+          title={`Papers \u2014 ${docsFor.name}`}
+          onClose={() => setDocsFor(null)}
+        />
+      )}
+
+      {openingFor && (
+        <OpeningBalanceSheet
+          partyType="driver"
+          partyId={openingFor.id}
+          partyName={openingFor.name}
+          onClose={() => setOpeningFor(null)}
+        />
       )}
 
       <ConfirmDialog

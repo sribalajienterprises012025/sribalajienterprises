@@ -107,6 +107,24 @@ feature that would need a native wrapper such as Capacitor.
 - **Activity** — an owner-only audit trail written by database triggers, showing
   who changed what, with from/to values for each changed column.
 
+### Also built
+
+Three things the architecture document had in its schema but no phase claimed.
+They are small, and leaving them out would have left visible holes:
+
+- **Attachments** — proof of delivery on a trip (the camera opens straight to it
+  on a phone), and RC, insurance, permit, fitness or licence copies on a vehicle or
+  driver. Without this the compliance report flagged a missing POD that there was
+  no way to supply. Files live in a private bucket under a path beginning with the
+  business id, which is what the storage policies check, so links are signed on
+  demand rather than stored.
+- **Opening balances** — what a party already owed before the app was in use. A
+  business starting mid-year would otherwise show every party as square on day one
+  and the ledgers would be quietly wrong. Direction is a dropdown rather than a
+  minus sign to remember.
+- **Quotations** — rate quotes per route, moved to accepted or rejected, with
+  lapsed validity flagged.
+
 ---
 
 ## Getting started
@@ -176,14 +194,15 @@ try a change before it reaches the live app.
 
 ## Testing the database
 
-`npm run db:test` applies every migration to a scratch database and runs 139
+`npm run db:test` applies every migration to a scratch database and runs 159
 assertions against it: that business A cannot see or write business B's rows, that a
 helper can log a trip but not add a vehicle, that a CA cannot write at all, that the
 ledger and P&L arithmetic comes out right, that invoice numbering is per-business and
 per-year, that a salary is not deducted twice, that service intervals come due at the
 right odometer, that an invitation cannot be claimed by someone it was not addressed
 to, that the audit trail records only what changed and cannot be forged or rewritten,
-and that the storage policies enforce the tenant folder.
+that the storage policies enforce the tenant folder, and that the `documents`
+table's policies match those storage policies exactly.
 
 It needs a local Postgres 15+ reachable over TCP:
 
@@ -197,10 +216,20 @@ npm run db:test
 depend on — the `auth` and `storage` schemas, the `anon`/`authenticated` roles, the
 default grants. It is never applied to the real project.
 
-One thing the suite encodes that is easy to get wrong: under RLS a failed `INSERT`
-raises, but an `UPDATE` or `DELETE` the `USING` clause excludes simply matches zero
-rows and returns successfully. Asserting "it threw" would pass for the wrong reason,
-so those cases read the value back and assert it is untouched.
+Two things the suite encodes that are easy to get wrong:
+
+- Under RLS a failed `INSERT` raises, but an `UPDATE` or `DELETE` the `USING` clause
+  excludes simply matches zero rows and returns successfully. Asserting "it threw"
+  would pass for the wrong reason, so those cases read the value back and assert it
+  is untouched.
+- A table's policies and the storage policies for the same feature have to agree. A
+  helper who could upload a file to the bucket but not insert its metadata row would
+  leave an object nobody can find. The suite asserts both sides for `documents`.
+
+It found three real problems while the app was being built: the `documents` policies
+disagreed with the storage policies over whether a helper may attach a file; the
+rupee sign rendered as mangled digits in every PDF; and the P&L deducted a driver's
+pay twice when a salary run and a salary expense both existed.
 
 ## Project layout
 
@@ -222,9 +251,11 @@ src/
     drivers/
     parties/         clients + brokers
     settings/         business details, staff access, activity log
-  components/ui/     buttons, fields, cards, status pills, bottom sheet
+  components/          DocumentsSheet (attachments for any record)
+  components/ui/       buttons, fields, cards, status pills, bottom sheet
   lib/
     supabase.ts      the only API layer
+    storage.ts       private-bucket uploads and signed links
     format.ts        ₹ / date / km formatting for en-IN, plus PDF-safe variants
     gst.ts           CGST/SGST vs IGST, rates, state codes
     export/          PDF, Excel and the zipped CA pack, all lazily loaded

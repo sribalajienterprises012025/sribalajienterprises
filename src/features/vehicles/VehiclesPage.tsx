@@ -18,6 +18,7 @@ import {
   type VehicleInput,
 } from '@/lib/queries/vehicles'
 import type { Vehicle } from '@/types'
+import { DocumentsSheet } from '@/components/DocumentsSheet'
 import { VehicleForm } from './VehicleForm'
 
 export function VehiclesPage() {
@@ -29,6 +30,7 @@ export function VehiclesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Vehicle | null>(null)
   const [deleting, setDeleting] = useState<Vehicle | null>(null)
+  const [docsFor, setDocsFor] = useState<Vehicle | null>(null)
 
   const vehiclesQuery = useQuery({
     queryKey: queryKeys.vehicles(businessId),
@@ -111,6 +113,7 @@ export function VehiclesPage() {
                 canEdit={isOwner}
                 onEdit={() => openEdit(vehicle)}
                 onDelete={() => setDeleting(vehicle)}
+                onDocs={() => setDocsFor(vehicle)}
               />
             ))}
           </div>
@@ -126,6 +129,15 @@ export function VehiclesPage() {
           saving={saveMutation.isPending}
           onClose={closeForm}
           onSubmit={(values) => saveMutation.mutate(values)}
+        />
+      )}
+
+      {docsFor && (
+        <DocumentsSheet
+          ownerType="vehicle"
+          ownerId={docsFor.id}
+          title={`Papers \u2014 ${docsFor.reg_no}`}
+          onClose={() => setDocsFor(null)}
         />
       )}
 
@@ -147,11 +159,13 @@ function VehicleRow({
   canEdit,
   onEdit,
   onDelete,
+  onDocs,
 }: {
   vehicle: Vehicle
   canEdit: boolean
   onEdit: () => void
   onDelete: () => void
+  onDocs: () => void
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -174,16 +188,21 @@ function VehicleRow({
         <ExpiryPill days={daysUntil(vehicle.fitness_expiry)} label="Fitness" />
       </div>
 
-      {canEdit && (
-        <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
-          <Button variant="secondary" size="sm" onClick={onEdit}>
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onDelete}>
-            Remove
-          </Button>
-        </div>
-      )}
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+        <Button variant="secondary" size="sm" onClick={onDocs}>
+          Papers
+        </Button>
+        {canEdit && (
+          <>
+            <Button variant="secondary" size="sm" onClick={onEdit}>
+              Edit
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDelete}>
+              Remove
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

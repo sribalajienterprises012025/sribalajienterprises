@@ -75,10 +75,13 @@ declare
   -- Operational tables. Helpers do the day-to-day data entry here.
   operational text[] := array['trips', 'expenses', 'invoices', 'credit_debit_notes'];
   -- Master data, asset records and ledger anchors. Owner-only writes.
+  -- `documents` is deliberately not here: it gets its own policies below,
+  -- because a helper must be able to attach a proof of delivery but not
+  -- delete one.
   owner_only text[] := array[
     'vehicles', 'drivers', 'driver_advances', 'driver_salary_payments',
     'clients', 'brokers', 'quotations', 'opening_balances',
-    'vehicle_maintenance_log', 'insurance_claims', 'documents'
+    'vehicle_maintenance_log', 'insurance_claims'
   ];
   writers text;
 begin
@@ -191,6 +194,48 @@ create policy users_delete on public.users
     business_id = public.current_business_id()
     and public.current_user_role() = 'owner'
     and id <> auth.uid()
+  );
+
+-- -----------------------------------------------------------------------------
+-- documents — file metadata.
+--
+-- Writes follow the storage policies in the storage migration exactly: a
+-- helper attaches a proof of delivery (which is captured at the drop point, by
+-- whoever is doing the data entry), but only the owner removes one. Letting the
+-- two disagree would mean an upload that lands in the bucket and is then
+-- refused a metadata row, leaving a file nobody can find.
+-- -----------------------------------------------------------------------------
+drop policy if exists documents_select on public.documents;
+create policy documents_select on public.documents
+  for select to authenticated
+  using (business_id = public.current_business_id());
+
+drop policy if exists documents_insert on public.documents;
+create policy documents_insert on public.documents
+  for insert to authenticated
+  with check (
+    business_id = public.current_business_id()
+    and public.current_user_role() in ('owner', 'helper')
+  );
+
+drop policy if exists documents_update on public.documents;
+create policy documents_update on public.documents
+  for update to authenticated
+  using (
+    business_id = public.current_business_id()
+    and public.current_user_role() in ('owner', 'helper')
+  )
+  with check (
+    business_id = public.current_business_id()
+    and public.current_user_role() in ('owner', 'helper')
+  );
+
+drop policy if exists documents_delete on public.documents;
+create policy documents_delete on public.documents
+  for delete to authenticated
+  using (
+    business_id = public.current_business_id()
+    and public.current_user_role() = 'owner'
   );
 
 -- -----------------------------------------------------------------------------

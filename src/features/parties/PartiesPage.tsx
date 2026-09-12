@@ -24,8 +24,10 @@ import {
 } from '@/lib/queries/parties'
 import type { Broker, Client } from '@/types'
 import { BrokerForm, ClientForm } from './PartyForms'
+import { OpeningBalanceSheet } from './OpeningBalanceSheet'
+import { QuotationsPanel } from './QuotationsPanel'
 
-type Tab = 'clients' | 'brokers'
+type Tab = 'clients' | 'brokers' | 'quotations'
 
 export function PartiesPage() {
   const [tab, setTab] = useState<Tab>('clients')
@@ -42,9 +44,14 @@ export function PartiesPage() {
           <TabButton active={tab === 'brokers'} onClick={() => setTab('brokers')}>
             Brokers
           </TabButton>
+          <TabButton active={tab === 'quotations'} onClick={() => setTab('quotations')}>
+            Quotations
+          </TabButton>
         </div>
 
-        {tab === 'clients' ? <ClientsList /> : <BrokersList />}
+        {tab === 'clients' && <ClientsList />}
+        {tab === 'brokers' && <BrokersList />}
+        {tab === 'quotations' && <QuotationsPanel />}
       </div>
     </>
   )
@@ -82,6 +89,7 @@ function ClientsList() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleting, setDeleting] = useState<Client | null>(null)
+  const [openingFor, setOpeningFor] = useState<Client | null>(null)
 
   const clientsQuery = useQuery({
     queryKey: queryKeys.clients(businessId),
@@ -161,7 +169,7 @@ function ClientsList() {
               )}
 
               {isOwner && (
-                <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -171,6 +179,13 @@ function ClientsList() {
                     }}
                   >
                     Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setOpeningFor(client)}
+                  >
+                    Opening balance
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setDeleting(client)}>
                     Remove
@@ -196,6 +211,15 @@ function ClientsList() {
         />
       )}
 
+      {openingFor && (
+        <OpeningBalanceSheet
+          partyType="client"
+          partyId={openingFor.id}
+          partyName={openingFor.name}
+          onClose={() => setOpeningFor(null)}
+        />
+      )}
+
       <ConfirmDialog
         open={Boolean(deleting)}
         title="Remove client"
@@ -218,6 +242,7 @@ function BrokersList() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Broker | null>(null)
   const [deleting, setDeleting] = useState<Broker | null>(null)
+  const [openingFor, setOpeningFor] = useState<Broker | null>(null)
 
   const brokersQuery = useQuery({
     queryKey: queryKeys.brokers(businessId),
@@ -297,7 +322,7 @@ function BrokersList() {
               )}
 
               {isOwner && (
-                <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -307,6 +332,13 @@ function BrokersList() {
                     }}
                   >
                     Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setOpeningFor(broker)}
+                  >
+                    Opening balance
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setDeleting(broker)}>
                     Remove
@@ -329,6 +361,15 @@ function BrokersList() {
             setEditing(null)
           }}
           onSubmit={(values) => saveMutation.mutate(values)}
+        />
+      )}
+
+      {openingFor && (
+        <OpeningBalanceSheet
+          partyType="broker"
+          partyId={openingFor.id}
+          partyName={openingFor.name}
+          onClose={() => setOpeningFor(null)}
         />
       )}
 

@@ -25,6 +25,7 @@ import type { Trip, TripStatus, TripWithRelations } from '@/types'
 import { TripForm } from './TripForm'
 import { balanceDue, tripDistance } from './tripSchema'
 import { StopsSheet } from '@/features/distribution/StopsSheet'
+import { DocumentsSheet } from '@/components/DocumentsSheet'
 
 const STATUS_FILTERS: Array<{ value: TripStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
@@ -58,6 +59,7 @@ export function TripsPage() {
   const [editing, setEditing] = useState<Trip | null>(null)
   const [deleting, setDeleting] = useState<TripWithRelations | null>(null)
   const [stopsFor, setStopsFor] = useState<TripWithRelations | null>(null)
+  const [docsFor, setDocsFor] = useState<TripWithRelations | null>(null)
 
   const filters = useMemo<TripFilters>(
     () => ({ status, search: search.trim() || undefined }),
@@ -212,6 +214,7 @@ export function TripsPage() {
                 }}
                 onDelete={() => setDeleting(trip)}
                 onStops={() => setStopsFor(trip)}
+                onDocs={() => setDocsFor(trip)}
                 onAdvance={(next) => statusMutation.mutate({ id: trip.id, next })}
               />
             ))}
@@ -234,6 +237,21 @@ export function TripsPage() {
             setEditing(null)
           }}
           onSubmit={(values) => saveMutation.mutate(values)}
+        />
+      )}
+
+      {docsFor && (
+        <DocumentsSheet
+          ownerType="trip"
+          ownerId={docsFor.id}
+          title={`Files \u2014 ${docsFor.pickup} \u2192 ${docsFor.drop_location}`}
+          // Cached on the trip so the compliance report can flag a missing POD
+          // without joining documents for every trip it lists.
+          onPrimaryChange={async (path) => {
+            await updateTrip(docsFor.id, { pod_file_url: path })
+            await invalidateTripData()
+          }}
+          onClose={() => setDocsFor(null)}
         />
       )}
 
@@ -269,6 +287,7 @@ function TripCard({
   onEdit,
   onDelete,
   onStops,
+  onDocs,
   onAdvance,
 }: {
   trip: TripWithRelations
@@ -278,6 +297,7 @@ function TripCard({
   onEdit: () => void
   onDelete: () => void
   onStops: () => void
+  onDocs: () => void
   onAdvance: (next: TripStatus) => void
 }) {
   const next = NEXT_STATUS[trip.status]
@@ -335,6 +355,9 @@ function TripCard({
           </Button>
           <Button variant="secondary" size="sm" onClick={onStops}>
             Stops
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onDocs}>
+            {trip.pod_file_url ? 'POD \u2713' : 'POD'}
           </Button>
           <Button variant="ghost" size="sm" onClick={onDelete}>
             Delete
