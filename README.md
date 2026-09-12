@@ -170,66 +170,74 @@ that creates the business and the owner record together in a single transaction.
 
 ## Deployment
 
-Cloudflare Pages, auto-deploying from GitHub.
+### 1. Supabase
+
+Create a project at [supabase.com](https://supabase.com). Pick the **Mumbai
+(ap-south-1)** region — every user is in India and it removes ~200 ms per request.
+Save the database password somewhere safe; it is shown once.
+
+Postgres 15 or newer is required. The ledger and report views are declared
+`security_invoker`, which older versions do not support.
+
+```bash
+npm i -g supabase
+supabase login
+supabase link --project-ref <your-project-ref>
+supabase db push
+```
+
+`db push` applies all nine migrations in filename order. It is safe to re-run.
+
+Then copy **Project Settings → API → Project URL** and the **anon public** key.
+The anon key belongs in the browser: it carries no privileges of its own, and
+every read and write is checked against the RLS policies. Never put the
+`service_role` key in this app.
+
+**Auth settings worth changing** (Authentication → Providers → Email):
+
+- Turn **Confirm email** off while setting up, or you will need to click a link
+  before the first sign-in works. Turn it back on before adding staff.
+- Set **Site URL** to your Cloudflare Pages URL once you have it, so confirmation
+  and recovery links come back to the right place.
+
+### 2. Cloudflare Pages
+
+Connect the repository, then:
 
 | Setting | Value |
 |---|---|
 | Build command | `npm run build` |
 | Output directory | `dist` |
-| Node version | 20 |
+| Environment variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in **Settings → Environment
-variables**. They are never committed. The anon key is meant to be public — it
-carries no privileges of its own, and every read and write is checked against the
-RLS policies in `supabase/migrations/`.
+Node is pinned to 20 by `.nvmrc`; no `NODE_VERSION` variable is needed. The build
+fetches SheetJS from `cdn.sheetjs.com` (see the note under **Notes on exports**),
+which Cloudflare's build network allows.
 
-`public/_redirects` routes every path to `index.html` so deep links work, and
-`public/_headers` sets long-lived caching for hashed assets while keeping the shell
-and service worker revalidating so a deploy actually reaches installed phones.
+`public/_redirects` routes every path to `index.html` so deep links work before
+the service worker is installed, and `public/_headers` caches hashed assets for a
+year while keeping the shell and service worker revalidating, so a deploy actually
+reaches phones with the app already installed. Both are copied into `dist`
+automatically.
 
 Every branch and pull request gets its own preview URL, which is the safe way to
 try a change before it reaches the live app.
 
----
+### 3. First run
 
-## Testing the database
+Open the site and create an account. With no invitation waiting, the first
+sign-in offers to create the business; that runs `bootstrap_business()`, which
+makes the business and your owner record in one transaction. From there,
+**Settings → Staff** invites a helper or a CA.
 
-`npm run db:test` applies every migration to a scratch database and runs 159
-assertions against it: that business A cannot see or write business B's rows, that a
-helper can log a trip but not add a vehicle, that a CA cannot write at all, that the
-ledger and P&L arithmetic comes out right, that invoice numbering is per-business and
-per-year, that a salary is not deducted twice, that service intervals come due at the
-right odometer, that an invitation cannot be claimed by someone it was not addressed
-to, that the audit trail records only what changed and cannot be forged or rewritten,
-that the storage policies enforce the tenant folder, and that the `documents`
-table's policies match those storage policies exactly.
+### If `db push` stops on the storage migration
 
-It needs a local Postgres 15+ reachable over TCP:
-
-```bash
-initdb -D /tmp/pgdata -U postgres --auth=trust
-pg_ctl -D /tmp/pgdata -o "-p 55432" start
-npm run db:test
-```
-
-`supabase/test/00_shim.sql` recreates the parts of a Supabase project the migrations
-depend on — the `auth` and `storage` schemas, the `anon`/`authenticated` roles, the
-default grants. It is never applied to the real project.
-
-Two things the suite encodes that are easy to get wrong:
-
-- Under RLS a failed `INSERT` raises, but an `UPDATE` or `DELETE` the `USING` clause
-  excludes simply matches zero rows and returns successfully. Asserting "it threw"
-  would pass for the wrong reason, so those cases read the value back and assert it
-  is untouched.
-- A table's policies and the storage policies for the same feature have to agree. A
-  helper who could upload a file to the bucket but not insert its metadata row would
-  leave an object nobody can find. The suite asserts both sides for `documents`.
-
-It found three real problems while the app was being built: the `documents` policies
-disagreed with the storage policies over whether a helper may attach a file; the
-rupee sign rendered as mangled digits in every PDF; and the P&L deducted a driver's
-pay twice when a salary run and a salary expense both existed.
+`20250101000200_storage.sql` sets access policies on `storage.objects`, a table
+owned by `supabase_storage_admin` rather than by the role running the migration.
+The migration handles this by becoming whoever owns the table, and resets the role
+afterwards. If it still refuses, it says which role owns the table and which role
+you are; applying that one file from the Supabase SQL Editor resolves it, since the
+editor runs with the necessary rights.
 
 ## Project layout
 

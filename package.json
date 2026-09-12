@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Balaji Enterprises — transport, distribution & accounts management app",
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Balaji Enterprises \u2014 transport, distribution & accounts management app",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
