@@ -24,6 +24,7 @@ import {
 import type { Trip, TripStatus, TripWithRelations } from '@/types'
 import { TripForm } from './TripForm'
 import { balanceDue, tripDistance } from './tripSchema'
+import { StopsSheet } from '@/features/distribution/StopsSheet'
 
 const STATUS_FILTERS: Array<{ value: TripStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
@@ -56,6 +57,7 @@ export function TripsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Trip | null>(null)
   const [deleting, setDeleting] = useState<TripWithRelations | null>(null)
+  const [stopsFor, setStopsFor] = useState<TripWithRelations | null>(null)
 
   const filters = useMemo<TripFilters>(
     () => ({ status, search: search.trim() || undefined }),
@@ -209,6 +211,7 @@ export function TripsPage() {
                   setFormOpen(true)
                 }}
                 onDelete={() => setDeleting(trip)}
+                onStops={() => setStopsFor(trip)}
                 onAdvance={(next) => statusMutation.mutate({ id: trip.id, next })}
               />
             ))}
@@ -231,6 +234,14 @@ export function TripsPage() {
             setEditing(null)
           }}
           onSubmit={(values) => saveMutation.mutate(values)}
+        />
+      )}
+
+      {stopsFor && (
+        <StopsSheet
+          tripId={stopsFor.id}
+          tripRoute={`${stopsFor.pickup} → ${stopsFor.drop_location}`}
+          onClose={() => setStopsFor(null)}
         />
       )}
 
@@ -257,6 +268,7 @@ function TripCard({
   advancing,
   onEdit,
   onDelete,
+  onStops,
   onAdvance,
 }: {
   trip: TripWithRelations
@@ -265,6 +277,7 @@ function TripCard({
   advancing: boolean
   onEdit: () => void
   onDelete: () => void
+  onStops: () => void
   onAdvance: (next: TripStatus) => void
 }) {
   const next = NEXT_STATUS[trip.status]
@@ -319,6 +332,9 @@ function TripCard({
           )}
           <Button variant="secondary" size="sm" onClick={onEdit}>
             Edit
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onStops}>
+            Stops
           </Button>
           <Button variant="ghost" size="sm" onClick={onDelete}>
             Delete

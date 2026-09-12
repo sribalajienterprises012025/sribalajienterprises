@@ -50,4 +50,12 @@ export const queryKeys = {
     ['advances', businessId, driverId ?? null] as const,
   salaryPayments: (businessId: string, driverId?: string) =>
     ['salary-payments', businessId, driverId ?? null] as const,
+
+  consignments: (businessId: string, filters?: unknown) =>
+    ['consignments', businessId, filters ?? null] as const,
+  utilisation: (businessId: string, from: string, to: string) =>
+    ['utilisation', businessId, from, to] as const,
+  tripsInRange: (businessId: string, from: string, to: string) =>
+    ['trips-in-range', businessId, from, to] as const,
+  stops: (tripId: string) => ['stops', tripId] as const,
 } as const

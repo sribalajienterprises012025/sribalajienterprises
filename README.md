@@ -20,7 +20,7 @@ go into daily use now and grow from there.
 |---|---|---|
 | 1 | Vehicle, driver, client and broker masters · trip entry · expense logging · dashboard | ✅ Done |
 | 2 | Invoicing (GST / non-GST) · ledgers · credit & debit notes · receipts · driver advances and salary | ✅ Done |
-| 3 | Distribution planning · multi-stop and multi-vehicle | Planned |
+| 3 | Distribution planning · multi-stop and multi-vehicle | ✅ Done |
 | 4 | Reports · CA export pack · PDF and Excel export | Planned |
 | 5 | Asset care (service-by-km, tyres, claims) · helper & CA roles in-app · audit trail | Planned |
 
@@ -61,6 +61,20 @@ are enforced in the database today, ahead of the Phase 5 UI for managing staff.
   full derivation.
 - **Driver advances and salary runs** — recovering an advance through a salary run
   marks it recovered, so the same rupee is never chased twice.
+
+### What Phase 3 adds
+
+- **Week plan** — a vehicle × day grid. It exists to surface the two things that
+  cost money: a truck sitting idle (dashed cell) and a truck promised to two loads
+  on the same day (red cell). Both are counted in the header rather than left for
+  you to spot.
+- **Consignments** — one customer order carried by several trucks. Dispatch as many
+  trips against it as it takes; the planner tracks quantity dispatched against
+  ordered and shows what is still to go.
+- **Multi-stop trips** — an ordered list of loads and unloads per trip, each
+  markable reached or done as the driver calls in, and reorderable. The trip's own
+  pickup and drop stay as the headline route, so every existing list, invoice and
+  report reads the same as before.
 
 ---
 
@@ -163,6 +177,7 @@ src/
     auth/            login, one-time onboarding, setup gate
     dashboard/
     trips/           trip list, entry form, trip maths
+    distribution/     week planning grid, consignments, trip stops
     accounts/
       invoices/       invoice form with GST computation, credit/debit notes
       ledgers/        client, broker and driver ledgers, receipts
@@ -180,7 +195,7 @@ src/
   hooks/             auth, master data, toasts
   types/             database types, mirroring the migrations
 
-supabase/migrations/ schema, RLS policies, storage, invoicing, ledger views
+supabase/migrations/ schema, RLS, storage, invoicing, ledgers, distribution
 supabase/test/       shim, seed and assertions for npm run db:test
 scripts/             PWA icon generator
 docs/                architecture
@@ -213,5 +228,10 @@ Enforced by RLS, so they hold even if someone bypasses the UI entirely.
   lives in `driver_advances` and `driver_salary_payments`, and a second home for it
   would double-count in the driver ledger.
 - `trips.drop_location` is named that way because `DROP` is a reserved word in SQL.
+- Consignments and trip stops are both optional additions beyond the original
+  architecture document, which listed no backend change for Phase 3. Multi-stop and
+  multi-vehicle cannot be represented by the Phase 1 `trips` table alone — it has one
+  pickup, one drop, and nothing that groups several trucks onto one order. A trip with
+  no stops and no consignment behaves exactly as it did before.
 - `party_id` on `trips` and `quotations` points at either a client or a broker, so it
   carries no foreign key; party names are resolved in the app from one merged lookup.

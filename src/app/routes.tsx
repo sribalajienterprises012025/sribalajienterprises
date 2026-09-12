@@ -10,6 +10,7 @@ import { PartiesPage } from '@/features/parties/PartiesPage'
 import { ExpensesPage } from '@/features/accounts/expenses/ExpensesPage'
 import { InvoicesPage } from '@/features/accounts/invoices/InvoicesPage'
 import { LedgersPage } from '@/features/accounts/ledgers/LedgersPage'
+import { DistributionPage } from '@/features/distribution/DistributionPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { RequireOwner } from './RequireOwner'
 
@@ -28,6 +29,7 @@ export function AppRoutes() {
         <Route path="expenses" element={<ExpensesPage />} />
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="ledgers" element={<LedgersPage />} />
+        <Route path="distribution" element={<DistributionPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="drivers" element={<DriversPage />} />
         <Route path="parties" element={<PartiesPage />} />

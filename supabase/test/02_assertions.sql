@@ -14,6 +14,7 @@
 \set owner_b 22222222-0000-0000-0000-000000000001
 \set cli_a 55555555-0000-0000-0000-000000000001
 \set brk_a 66666666-0000-0000-0000-000000000001
+\set veh_a 33333333-0000-0000-0000-000000000001
 \set drv_a 44444444-0000-0000-0000-000000000001
 \set trip1 77777777-0000-0000-0000-000000000001
 
@@ -332,5 +333,107 @@ select pg_temp.expect('bootstrap creates the owner profile',
   (select role from public.users where id = '99999999-0000-0000-0000-000000000009'), 'owner');
 select pg_temp.expect_denied('bootstrap cannot run twice',
   'select public.bootstrap_business(''Another Co'', ''Same Owner'')');
+
+reset role;
+
+-- =============================================================================
+-- Phase 3 — distribution planning
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+-- 60 tonnes ordered, dispatched across two trucks.
+insert into public.consignments (
+  id, business_id, reference, party_type, party_id, goods_description,
+  total_quantity, unit, pickup, drop_location, planned_date
+) values (
+  '88888888-0000-0000-0000-000000000001', :'biz_a', 'CON-001', 'client', :'cli_a',
+  'Cement bags', 60, 'tonnes', 'Hyderabad', 'Nagpur', current_date
+);
+
+insert into public.trips (
+  business_id, vehicle_id, party_type, party_id, pickup, drop_location,
+  trip_date, freight_amount, consignment_id, planned_quantity, status
+) values
+  (:'biz_a', :'veh_a', 'client', :'cli_a', 'Hyderabad', 'Nagpur',
+   current_date, 40000, '88888888-0000-0000-0000-000000000001', 20, 'delivered'),
+  (:'biz_a', :'veh_a', 'client', :'cli_a', 'Hyderabad', 'Nagpur',
+   current_date, 40000, '88888888-0000-0000-0000-000000000001', 20, 'booked');
+
+select pg_temp.expect('consignment counts its trips',
+  (select trip_count::int from public.consignment_progress
+   where id = '88888888-0000-0000-0000-000000000001'), 2);
+select pg_temp.expect('consignment sums dispatched quantity',
+  (select dispatched_quantity::numeric from public.consignment_progress
+   where id = '88888888-0000-0000-0000-000000000001'), 40::numeric);
+select pg_temp.expect('consignment computes what is left',
+  (select pending_quantity::numeric from public.consignment_progress
+   where id = '88888888-0000-0000-0000-000000000001'), 20::numeric);
+select pg_temp.expect('consignment counts only delivered trips as delivered',
+  (select delivered_count::int from public.consignment_progress
+   where id = '88888888-0000-0000-0000-000000000001'), 1);
+
+-- Two trips on one vehicle for one day is a double-booking the grid must flag.
+select pg_temp.expect('utilisation spots a double-booked day',
+  (select trip_count::int from public.vehicle_utilisation
+   where vehicle_id = :'veh_a' and trip_date = current_date), 2);
+
+-- Multi-stop: a trip that loads twice and drops three times.
+insert into public.trip_stops (business_id, trip_id, sequence, stop_type, location, quantity, unit)
+values
+  (:'biz_a', :'trip1', 1, 'pickup', 'Godown A', 10, 'tonnes'),
+  (:'biz_a', :'trip1', 2, 'pickup', 'Godown B', 6, 'tonnes'),
+  (:'biz_a', :'trip1', 3, 'drop', 'Shop 1', 5, 'tonnes'),
+  (:'biz_a', :'trip1', 4, 'drop', 'Shop 2', 6, 'tonnes'),
+  (:'biz_a', :'trip1', 5, 'drop', 'Shop 3', 5, 'tonnes');
+
+select pg_temp.expect('stops are recorded in order',
+  (select count(*)::int from public.trip_stops where trip_id = :'trip1'), 5);
+select pg_temp.expect('first stop is the first pickup',
+  (select location from public.trip_stops
+   where trip_id = :'trip1' order by sequence limit 1), 'Godown A');
+
+select pg_temp.expect_denied('two stops cannot share a position',
+  format('insert into public.trip_stops (business_id, trip_id, sequence, stop_type, location)
+          values (%L, %L, 1, ''drop'', ''Clash'')', :'biz_a', :'trip1'));
+select pg_temp.expect_denied('stop sequence must be positive',
+  format('insert into public.trip_stops (business_id, trip_id, sequence, stop_type, location)
+          values (%L, %L, 0, ''drop'', ''Zero'')', :'biz_a', :'trip1'));
+
+-- Helpers update stops as a driver calls them in, but do not plan consignments.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+
+update public.trip_stops set status = 'completed', reached_at = now()
+where trip_id = :'trip1' and sequence = 1;
+select pg_temp.expect('helper can complete a stop',
+  (select status from public.trip_stops where trip_id = :'trip1' and sequence = 1),
+  'completed');
+
+select pg_temp.expect_denied('helper cannot plan a consignment',
+  format('insert into public.consignments (business_id, party_type, party_id, pickup, drop_location)
+          values (%L, ''client'', %L, ''A'', ''B'')', :'biz_a', :'cli_a'));
+
+-- Deleting a trip must take its stops with it, not orphan them.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+delete from public.trips where consignment_id = '88888888-0000-0000-0000-000000000001';
+select pg_temp.expect('consignment survives its trips being deleted',
+  (select trip_count::int from public.consignment_progress
+   where id = '88888888-0000-0000-0000-000000000001'), 0);
+
+-- Tenancy again, on the new tables.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_b', false);
+select pg_temp.expect('owner B sees no consignments of A',
+  (select count(*)::int from public.consignments), 0);
+select pg_temp.expect('owner B sees no stops of A',
+  (select count(*)::int from public.trip_stops), 0);
+select pg_temp.expect('owner B sees no utilisation of A',
+  (select count(*)::int from public.vehicle_utilisation), 0);
 
 reset role;

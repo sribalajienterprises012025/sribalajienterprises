@@ -16,6 +16,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/invoices', label: 'Invoices', icon: '🧾', primary: true },
   { to: '/expenses', label: 'Expenses', icon: '💰' },
   { to: '/ledgers', label: 'Ledgers', icon: '📒' },
+  { to: '/distribution', label: 'Distribution', icon: '📦' },
   { to: '/vehicles', label: 'Vehicles', icon: '🚛' },
   { to: '/drivers', label: 'Drivers', icon: '👤' },
   { to: '/parties', label: 'Parties', icon: '🤝' },

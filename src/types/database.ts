@@ -356,3 +356,69 @@ export interface TripFinancialsRow {
   net_margin: number
   balance_due: number
 }
+
+// =============================================================================
+// Phase 3 — distribution planning
+// =============================================================================
+
+export type ConsignmentStatus =
+  | 'planned'
+  | 'part_dispatched'
+  | 'dispatched'
+  | 'completed'
+  | 'cancelled'
+
+export type QuantityUnit = 'tonnes' | 'kg' | 'bags' | 'nos' | 'litres' | 'cbm'
+export type StopType = 'pickup' | 'drop'
+export type StopStatus = 'pending' | 'reached' | 'completed' | 'skipped'
+
+export interface Consignment extends Timestamps {
+  id: string
+  business_id: string
+  reference: string | null
+  party_type: PartyType
+  party_id: string
+  goods_description: string | null
+  total_quantity: number | null
+  unit: QuantityUnit
+  pickup: string
+  drop_location: string
+  planned_date: string
+  status: ConsignmentStatus
+  note: string | null
+}
+
+export interface ConsignmentProgressRow extends Consignment {
+  trip_count: number
+  dispatched_quantity: number
+  pending_quantity: number | null
+  freight_total: number
+  delivered_count: number
+}
+
+export interface TripStop extends Timestamps {
+  id: string
+  business_id: string
+  trip_id: string
+  sequence: number
+  stop_type: StopType
+  location: string
+  contact: string | null
+  goods_description: string | null
+  quantity: number | null
+  unit: string | null
+  expected_at: string | null
+  reached_at: string | null
+  status: StopStatus
+  note: string | null
+}
+
+export interface VehicleUtilisationRow {
+  business_id: string
+  vehicle_id: string
+  trip_date: string
+  trip_count: number
+  freight_total: number
+  has_open_trip: boolean
+  routes: string
+}
