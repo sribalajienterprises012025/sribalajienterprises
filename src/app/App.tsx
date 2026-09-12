@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSecretKeyMistake, isSupabaseConfigured } from '@/lib/supabase'
 import { SetupRequiredPage } from '@/features/auth/SetupRequiredPage'
 import { AuthProvider } from './AuthProvider'
 import { ToastProvider } from './ToastProvider'
@@ -19,6 +19,12 @@ const queryClient = new QueryClient({
 })
 
 export function App() {
+  // A secret key in a browser bundle is worse than no key at all: it bypasses
+  // every RLS policy, so the app refuses to start rather than run with it.
+  if (isSecretKeyMistake) {
+    return <SetupRequiredPage reason="secret-key" />
+  }
+
   if (!isSupabaseConfigured) {
     return <SetupRequiredPage />
   }

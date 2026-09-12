@@ -1,0 +1,60 @@
+# Supabase project configuration.
+#
+# Committed so `supabase link` and `supabase db push` work straight after a
+# clone — without it the CLI needs `supabase init` first, which is easy to run
+# in the wrong directory.
+#
+# project_id is the local stack's container name prefix, not the hosted project
+# reference. The hosted project comes from `supabase link --project-ref <ref>`,
+# which writes it to supabase/.temp/ (gitignored).
+
+project_id = "balaji-enterprises"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+# Caps how many rows one request can return, so a runaway query cannot pull the
+# whole trip history onto a phone.
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# Match this to the hosted project. 15 is the floor: the ledger and report views
+# are declared security_invoker, which Postgres 14 does not support.
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+# Catches outgoing mail locally so sign-up confirmations can be read without a
+# real mailbox.
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Local only: skips the confirmation step so a local sign-up is one action.
+# The hosted project keeps confirmation on — see the deployment notes.
+enable_confirmations = false
+double_confirm_changes = true
+
+[analytics]
+enabled = false

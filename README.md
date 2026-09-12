@@ -187,11 +187,27 @@ supabase db push
 ```
 
 `db push` applies all nine migrations in filename order. It is safe to re-run.
+`supabase/config.toml` is committed, so there is no need to run `supabase init`
+first — which is easy to run in the wrong directory.
 
-Then copy **Project Settings → API → Project URL** and the **anon public** key.
-The anon key belongs in the browser: it carries no privileges of its own, and
-every read and write is checked against the RLS policies. Never put the
-`service_role` key in this app.
+Then copy **Project Settings → API** → the Project URL, and the browser key from
+**API Keys**.
+
+Supabase issues two generations of that key and the app takes either:
+
+| Key | Shape | Env variable |
+|---|---|---|
+| Publishable (new projects) | `sb_publishable_…` | `VITE_SUPABASE_PUBLISHABLE_KEY` |
+| Anon (older projects) | `eyJ…`, a JWT | `VITE_SUPABASE_ANON_KEY` |
+
+Both map to the `anon` Postgres role, so they are interchangeable; if both are
+set the publishable one wins. Either is meant to be public — it carries no
+privileges of its own, and every read and write is checked against the RLS
+policies.
+
+The **secret** key (`sb_secret_…`, formerly `service_role`) is the opposite: it
+bypasses every policy. It must never go into this app, a Cloudflare variable, or
+the repo. The app refuses to start if it finds one, and says so.
 
 **Auth settings worth changing** (Authentication → Providers → Email):
 
@@ -208,7 +224,7 @@ Connect the repository, then:
 |---|---|
 | Build command | `npm run build` |
 | Output directory | `dist` |
-| Environment variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
+| Environment variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 
 Node is pinned to 20 by `.nvmrc`; no `NODE_VERSION` variable is needed. The build
 fetches SheetJS from `cdn.sheetjs.com` (see the note under **Notes on exports**),
