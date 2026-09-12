@@ -437,3 +437,129 @@ select pg_temp.expect('owner B sees no utilisation of A',
   (select count(*)::int from public.vehicle_utilisation), 0);
 
 reset role;
+
+-- =============================================================================
+-- Phase 4 — report views
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+-- Seed state at this point, all in the current month:
+--   trips     50,000 + 60,000 freight, 2,400 broker commission, 1,000 TDS
+--   expenses  8,000 fuel (on trip 1) + 5,000 office
+--   invoice   52,500 GST at 5% (IGST 2,500), one 1,500 credit note
+select pg_temp.expect('P&L freight for the month',
+  (select freight::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 110000::numeric);
+select pg_temp.expect('P&L expense total',
+  (select expenses_total::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 13000::numeric);
+select pg_temp.expect('P&L splits fuel out',
+  (select fuel::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 8000::numeric);
+select pg_temp.expect('P&L keeps broker commission separate',
+  (select broker_commission::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 2400::numeric);
+-- 110,000 freight - 2,400 commission - 13,000 expenses = 94,600
+select pg_temp.expect('P&L net profit',
+  (select net_profit::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 94600::numeric);
+
+-- A month with an expense but no trip must still appear, or it drops out of
+-- the P&L entirely.
+insert into public.expenses (business_id, category, date, amount, payment_mode)
+values (:'biz_a', 'maintenance', current_date - interval '4 months', 26000, 'bank');
+select pg_temp.expect('a month with expenses but no trips still appears',
+  (select expenses_total::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date - interval '4 months')::date),
+  26000::numeric);
+select pg_temp.expect('that month shows a loss',
+  (select net_profit::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date - interval '4 months')::date),
+  -26000::numeric);
+
+-- A salary run must not be deducted twice when a salary expense also exists.
+insert into public.driver_salary_payments (
+  business_id, driver_id, period_month, salary_earned, advances_deducted,
+  other_deductions, net_payable, amount_paid
+) values (
+  :'biz_a', :'drv_a', date_trunc('month', current_date)::date,
+  22000, 3000, 0, 19000, 19000
+);
+insert into public.expenses (business_id, category, date, amount, payment_mode)
+values (:'biz_a', 'salary', current_date, 19000, 'bank');
+
+-- expenses_total is now 32,000 (13,000 + 19,000), but net_profit adds the
+-- 19,000 salary expense back and deducts the 19,000 salary run instead:
+-- 110,000 - 2,400 - 32,000 + 19,000 - 19,000 = 75,600
+select pg_temp.expect('salary counted once, not twice',
+  (select net_profit::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 75600::numeric);
+
+-- GST summary
+select pg_temp.expect('GST summary taxable value',
+  (select taxable_value::numeric from public.gst_summary
+   where month = date_trunc('month', current_date)::date and gst_rate = 5), 50000::numeric);
+select pg_temp.expect('GST summary reads IGST out of the breakup jsonb',
+  (select igst::numeric from public.gst_summary
+   where month = date_trunc('month', current_date)::date and gst_rate = 5), 2500::numeric);
+select pg_temp.expect('GST summary excludes non-GST invoices',
+  (select count(*)::int from public.gst_summary), 1);
+
+-- Vehicle economics. Trip 1 covered 750 km; trip 2 has no closing reading.
+-- Vehicle expenses: 8,000 fuel + 26,000 maintenance = 34,000 across two months.
+select pg_temp.expect('vehicle distance for the month',
+  (select distance_km::int from public.vehicle_monthly
+   where vehicle_id = :'veh_a' and month = date_trunc('month', current_date)::date), 750);
+select pg_temp.expect('vehicle cost per km',
+  (select cost_per_km::numeric from public.vehicle_monthly
+   where vehicle_id = :'veh_a' and month = date_trunc('month', current_date)::date),
+  10.67::numeric);
+select pg_temp.expect('vehicle revenue per km',
+  (select revenue_per_km::numeric from public.vehicle_monthly
+   where vehicle_id = :'veh_a' and month = date_trunc('month', current_date)::date),
+  146.67::numeric);
+-- The maintenance month has no trips, so no per-km figure can be computed.
+select pg_temp.expect('no distance means no cost per km',
+  (select cost_per_km from public.vehicle_monthly
+   where vehicle_id = :'veh_a'
+     and month = date_trunc('month', current_date - interval '4 months')::date),
+  null::numeric);
+
+-- Compliance gaps. Trip 2 is GST with no LR, no e-way bill, no POD and no
+-- invoice, so it must be flagged on all four counts.
+select pg_temp.expect('compliance flags a trip with no paperwork',
+  (select count(*)::int from public.compliance_gaps
+   where missing_lr and missing_eway and missing_pod and not_invoiced), 1);
+-- Trip 1 has an LR and an e-way bill and is invoiced, but no POD on file.
+select pg_temp.expect('compliance flags a missing POD on its own',
+  (select missing_pod from public.compliance_gaps where trip_id = :'trip1'), true);
+select pg_temp.expect('compliance does not flag an LR that is present',
+  (select missing_lr from public.compliance_gaps where trip_id = :'trip1'), false);
+
+-- Reports are exactly what a CA needs, and a CA is read-only.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'ca_a', false);
+select pg_temp.expect('CA can read the P&L',
+  (select count(*)::int > 0 from public.monthly_pl), true);
+select pg_temp.expect('CA can read the GST summary',
+  (select count(*)::int > 0 from public.gst_summary), true);
+select pg_temp.expect('CA can read compliance gaps',
+  (select count(*)::int > 0 from public.compliance_gaps), true);
+
+-- And the reports respect tenancy like everything else.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_b', false);
+select pg_temp.expect('owner B sees no P&L of A',
+  (select count(*)::int from public.monthly_pl), 0);
+select pg_temp.expect('owner B sees no GST of A',
+  (select count(*)::int from public.gst_summary), 0);
+select pg_temp.expect('owner B sees no vehicle economics of A',
+  (select count(*)::int from public.vehicle_monthly), 0);
+select pg_temp.expect('owner B sees no compliance gaps of A',
+  (select count(*)::int from public.compliance_gaps), 0);
+
+reset role;

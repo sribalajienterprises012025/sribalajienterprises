@@ -49,15 +49,19 @@ insert into public.brokers (id, business_id, name, commission_type, commission_r
 values (:'brk_a', :'biz_a', 'Krishna Brokers', 'percentage', 4);
 
 -- Client trip: ₹50,000 freight, ₹10,000 advance, ₹1,000 TDS, not yet invoiced.
+-- Carries its LR and e-way bill, as a GST trip awaiting payment would, but no
+-- POD on file — which is what the compliance report should pick up.
 \set trip1 77777777-0000-0000-0000-000000000001
 insert into public.trips (
   id, business_id, vehicle_id, driver_id, party_type, party_id,
   pickup, drop_location, trip_date, freight_amount, advance_received,
-  tds_deducted, bill_type, status, odometer_start, odometer_end
+  tds_deducted, bill_type, status, odometer_start, odometer_end,
+  lr_number, eway_bill_no
 ) values (
   :'trip1', :'biz_a', :'veh_a', :'drv_a', 'client', :'cli_a',
   'Hyderabad', 'Nagpur', current_date - 5, 50000, 10000,
-  1000, 'gst', 'payment_pending', 180000, 180750
+  1000, 'gst', 'payment_pending', 180000, 180750,
+  'LR-2291', '381002914455'
 );
 
 -- Broker trip: ₹60,000 freight, 4% = ₹2,400 commission.

@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/expenses', label: 'Expenses', icon: '💰' },
   { to: '/ledgers', label: 'Ledgers', icon: '📒' },
   { to: '/distribution', label: 'Distribution', icon: '📦' },
+  { to: '/reports', label: 'Reports', icon: '📈', roles: ['owner', 'ca'] },
   { to: '/vehicles', label: 'Vehicles', icon: '🚛' },
   { to: '/drivers', label: 'Drivers', icon: '👤' },
   { to: '/parties', label: 'Parties', icon: '🤝' },

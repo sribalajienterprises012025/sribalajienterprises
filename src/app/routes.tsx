@@ -11,8 +11,9 @@ import { ExpensesPage } from '@/features/accounts/expenses/ExpensesPage'
 import { InvoicesPage } from '@/features/accounts/invoices/InvoicesPage'
 import { LedgersPage } from '@/features/accounts/ledgers/LedgersPage'
 import { DistributionPage } from '@/features/distribution/DistributionPage'
+import { ReportsPage } from '@/features/accounts/reports/ReportsPage'
+import { RequireRole } from './RequireRole'
 import { SettingsPage } from '@/features/settings/SettingsPage'
-import { RequireOwner } from './RequireOwner'
 
 export function AppRoutes() {
   return (
@@ -30,6 +31,14 @@ export function AppRoutes() {
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="ledgers" element={<LedgersPage />} />
         <Route path="distribution" element={<DistributionPage />} />
+        <Route
+          path="reports"
+          element={
+            <RequireRole roles={['owner', 'ca']} label="Reports">
+              <ReportsPage />
+            </RequireRole>
+          }
+        />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="drivers" element={<DriversPage />} />
         <Route path="parties" element={<PartiesPage />} />
@@ -37,9 +46,9 @@ export function AppRoutes() {
         <Route
           path="settings"
           element={
-            <RequireOwner>
+            <RequireRole roles={['owner']} label="Settings">
               <SettingsPage />
-            </RequireOwner>
+            </RequireRole>
           }
         />
       </Route>

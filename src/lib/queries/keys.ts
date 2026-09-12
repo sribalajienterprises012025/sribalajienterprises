@@ -58,4 +58,13 @@ export const queryKeys = {
   tripsInRange: (businessId: string, from: string, to: string) =>
     ['trips-in-range', businessId, from, to] as const,
   stops: (tripId: string) => ['stops', tripId] as const,
+
+  monthlyPl: (businessId: string, range: unknown) =>
+    ['monthly-pl', businessId, range] as const,
+  gstSummary: (businessId: string, range: unknown) =>
+    ['gst-summary', businessId, range] as const,
+  vehicleMonthly: (businessId: string, range: unknown) =>
+    ['vehicle-monthly', businessId, range] as const,
+  complianceGaps: (businessId: string, range: unknown) =>
+    ['compliance-gaps', businessId, range] as const,
 } as const

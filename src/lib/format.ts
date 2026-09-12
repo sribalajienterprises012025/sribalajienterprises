@@ -94,3 +94,70 @@ export function humanize(value: string | null | undefined): string {
   const withSpaces = value.replace(/_/g, ' ')
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
 }
+
+/**
+ * Rupees written for a PDF: "Rs. 1,20,000.00".
+ *
+ * jsPDF's built-in Helvetica is WinAnsi-encoded and has no rupee glyph
+ * (U+20B9). Handed one, it switches the string to UTF-16 while still drawing it
+ * through a Latin-1 font, and the line comes out as mangled, space-separated
+ * digits. Embedding a font that has the glyph would cost a few hundred
+ * kilobytes for a symbol "Rs." conveys perfectly well, and "Rs." is what most
+ * Indian invoices print anyway.
+ */
+export function formatCurrencyPdf(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-'
+  const sign = value < 0 ? '-' : ''
+  const amount = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(value))
+  return `${sign}Rs. ${amount}`
+}
+
+/**
+ * Replaces characters the PDF base fonts cannot draw.
+ *
+ * Applied to every string that reaches a PDF, so a stray arrow or dash in a
+ * route name, a party name or a note cannot silently corrupt a line of an
+ * invoice. Anything still outside Latin-1 after the substitutions is dropped
+ * rather than left to render as mojibake.
+ */
+export function pdfSafe(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return ''
+  let out = ''
+  for (const character of String(value)) {
+    const code = character.codePointAt(0) ?? 0
+    const replacement = PDF_SUBSTITUTIONS[code]
+    if (replacement !== undefined) {
+      out += replacement
+    } else if (code <= 0xff) {
+      out += character
+    }
+    // Anything else is dropped: the base fonts would draw it as mojibake.
+  }
+  return out
+}
+
+/**
+ * Code point to ASCII, for the characters that actually turn up in this app's
+ * data and labels. Keyed by code point rather than written as literals so the
+ * source stays plain ASCII and cannot be mangled by an editor or a tool.
+ */
+const PDF_SUBSTITUTIONS: Record<number, string> = {
+  0x20b9: 'Rs.', // rupee sign
+  0x2192: '->', // rightwards arrow
+  0x27a1: '->', // black rightwards arrow
+  0x2190: '<-', // leftwards arrow
+  0x2014: '-', // em dash
+  0x2013: '-', // en dash
+  0x2018: "'", // left single quote
+  0x2019: "'", // right single quote
+  0x201c: '"', // left double quote
+  0x201d: '"', // right double quote
+  0x2022: '*', // bullet
+  0x00b7: '-', // middle dot
+  0x2026: '...', // ellipsis
+  0x00a0: ' ', // non-breaking space
+  0x2212: '-', // minus sign
+}

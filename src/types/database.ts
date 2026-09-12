@@ -422,3 +422,79 @@ export interface VehicleUtilisationRow {
   has_open_trip: boolean
   routes: string
 }
+
+// =============================================================================
+// Phase 4 — report views (all read-only)
+// =============================================================================
+
+export interface MonthlyPlRow {
+  business_id: string
+  /** First day of the month. */
+  month: string
+  trip_count: number
+  freight: number
+  broker_commission: number
+  tds_deducted: number
+  distance_km: number
+  expenses_total: number
+  fuel: number
+  toll: number
+  maintenance: number
+  driver_batta: number
+  compliance: number
+  loan_emi: number
+  office: number
+  salary_expense: number
+  other_expenses: number
+  driver_salaries: number
+  net_profit: number
+}
+
+export interface GstSummaryRow {
+  business_id: string
+  month: string
+  gst_rate: number
+  is_rcm: boolean
+  place_of_supply: string | null
+  invoice_count: number
+  taxable_value: number
+  cgst: number
+  sgst: number
+  igst: number
+  total_tax: number
+  invoice_total: number
+}
+
+export interface VehicleMonthlyRow {
+  business_id: string
+  vehicle_id: string
+  reg_no: string
+  month: string
+  trip_count: number
+  freight: number
+  broker_commission: number
+  distance_km: number
+  expenses: number
+  fuel: number
+  margin: number
+  cost_per_km: number | null
+  revenue_per_km: number | null
+}
+
+export interface ComplianceGapRow {
+  business_id: string
+  trip_id: string
+  trip_date: string
+  pickup: string
+  drop_location: string
+  freight_amount: number
+  bill_type: BillType
+  lr_number: string | null
+  eway_bill_no: string | null
+  pod_file_url: string | null
+  status: TripStatus
+  missing_lr: boolean
+  missing_eway: boolean
+  missing_pod: boolean
+  not_invoiced: boolean
+}

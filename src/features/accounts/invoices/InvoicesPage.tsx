@@ -24,6 +24,7 @@ import {
   type InvoiceInput,
 } from '@/lib/queries/invoices'
 import type { InvoiceStatus, InvoiceWithRelations } from '@/types'
+import { exportInvoicePdf } from '@/lib/export/pdf'
 import { InvoiceForm } from './InvoiceForm'
 import { NoteForm } from './NoteForm'
 
@@ -54,6 +55,7 @@ export function InvoicesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [noteFor, setNoteFor] = useState<InvoiceWithRelations | null>(null)
   const [cancelling, setCancelling] = useState<InvoiceWithRelations | null>(null)
+  const [printing, setPrinting] = useState<string | null>(null)
 
   const filters = useMemo<InvoiceFilters>(() => ({ status }), [status])
 
@@ -120,6 +122,32 @@ export function InvoicesPage() {
     },
     onError: (error) => toast.error(describeError(error)),
   })
+
+  /** Builds the tax invoice PDF in the browser; jsPDF loads on first use. */
+  async function downloadInvoice(invoice: InvoiceWithRelations) {
+    if (!businessQuery.data) return
+    setPrinting(invoice.id)
+    try {
+      const party = invoice.party_id
+        ? [...master.clients, ...master.brokers].find((item) => item.id === invoice.party_id)
+        : undefined
+
+      await exportInvoicePdf({
+        business: businessQuery.data,
+        invoice,
+        partyName: party?.name ?? 'Party',
+        partyGstin: party?.gstin ?? null,
+        partyAddress: party && 'address' in party ? party.address : null,
+        route: invoice.trip ? `${invoice.trip.pickup} to ${invoice.trip.drop_location}` : null,
+        lrNumber: invoice.trip?.lr_number ?? null,
+        ewayBillNo: null,
+      })
+    } catch (error) {
+      toast.error(describeError(error))
+    } finally {
+      setPrinting(null)
+    }
+  }
 
   const outstanding = useMemo(
     () =>
@@ -202,6 +230,8 @@ export function InvoicesPage() {
                 }
                 onAddNote={() => setNoteFor(invoice)}
                 onCancel={() => setCancelling(invoice)}
+                printing={printing === invoice.id}
+                onPrint={() => void downloadInvoice(invoice)}
               />
             ))}
           </div>
@@ -258,6 +288,8 @@ function InvoiceCard({
   onMarkPartPaid,
   onAddNote,
   onCancel,
+  printing,
+  onPrint,
 }: {
   invoice: InvoiceWithRelations
   partyName?: string
@@ -267,6 +299,8 @@ function InvoiceCard({
   onMarkPartPaid: () => void
   onAddNote: () => void
   onCancel: () => void
+  printing: boolean
+  onPrint: () => void
 }) {
   const overdueDays = daysUntil(invoice.due_date)
   const isOverdue =
@@ -314,6 +348,12 @@ function InvoiceCard({
       {!isOverdue && invoice.due_date && invoice.status !== 'paid' && (
         <p className="mt-2 text-xs text-slate-400">Due {formatDate(invoice.due_date)}</p>
       )}
+
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+        <Button variant="secondary" size="sm" loading={printing} onClick={onPrint}>
+          PDF
+        </Button>
+      </div>
 
       {canEdit && invoice.status !== 'cancelled' && (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">

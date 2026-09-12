@@ -21,7 +21,7 @@ go into daily use now and grow from there.
 | 1 | Vehicle, driver, client and broker masters · trip entry · expense logging · dashboard | ✅ Done |
 | 2 | Invoicing (GST / non-GST) · ledgers · credit & debit notes · receipts · driver advances and salary | ✅ Done |
 | 3 | Distribution planning · multi-stop and multi-vehicle | ✅ Done |
-| 4 | Reports · CA export pack · PDF and Excel export | Planned |
+| 4 | Reports · CA export pack · PDF and Excel export | ✅ Done |
 | 5 | Asset care (service-by-km, tyres, claims) · helper & CA roles in-app · audit trail | Planned |
 
 The full database schema for all five phases is already migrated, so later phases
@@ -75,6 +75,21 @@ are enforced in the database today, ahead of the Phase 5 UI for managing staff.
   markable reached or done as the driver calls in, and reorderable. The trip's own
   pickup and drop stay as the headline route, so every existing list, invoice and
   report reads the same as before.
+
+### What Phase 4 adds
+
+- **Reports** — P&L (month by month, and expenses by head), GST summary grouped
+  the way GSTR-1 reads, vehicle economics with cost and revenue per kilometre, and
+  a compliance register of trips missing an LR, e-way bill, proof of delivery or
+  invoice. Date ranges include the financial year taken from your own FY start
+  month, not a hardcoded April.
+- **Exports** — every report downloads as PDF (to read) or Excel (to filter and
+  pivot). Tax invoices download as a proper GST invoice PDF.
+- **CA export pack** — one zip holding the P&L and GST summary as PDFs, a
+  nine-sheet workbook (P&L, GST, invoice and trip registers, vehicle economics,
+  the three ledgers, compliance gaps), and a plain-text README stating the period
+  and how the numbers were arrived at. Built entirely in the browser — there is no
+  server-side job to run or pay for.
 
 ---
 
@@ -181,6 +196,7 @@ src/
     accounts/
       invoices/       invoice form with GST computation, credit/debit notes
       ledgers/        client, broker and driver ledgers, receipts
+      reports/        P&L, GST, vehicle economics, compliance, CA pack
       expenses/
     vehicles/
     drivers/
@@ -189,13 +205,15 @@ src/
   components/ui/     buttons, fields, cards, status pills, bottom sheet
   lib/
     supabase.ts      the only API layer
-    format.ts        ₹ / date / km formatting for en-IN
+    format.ts        ₹ / date / km formatting for en-IN, plus PDF-safe variants
     gst.ts           CGST/SGST vs IGST, rates, state codes
+    export/          PDF, Excel and the zipped CA pack, all lazily loaded
     queries/         one typed module per table
   hooks/             auth, master data, toasts
   types/             database types, mirroring the migrations
 
-supabase/migrations/ schema, RLS, storage, invoicing, ledgers, distribution
+supabase/migrations/ schema, RLS, storage, invoicing, ledgers, distribution,
+                     report views
 supabase/test/       shim, seed and assertions for npm run db:test
 scripts/             PWA icon generator
 docs/                architecture
@@ -210,6 +228,24 @@ Enforced by RLS, so they hold even if someone bypasses the UI entirely.
 | **Owner** | Everything in the business | Everything |
 | **Helper** | Everything in the business | Trips, expenses, invoices, credit/debit notes |
 | **CA** | Everything in the business | Nothing — read and export only |
+
+### Notes on exports
+
+- jsPDF, SheetJS and JSZip are **dynamically imported**, so the ~1.2 MB of export
+  libraries never reaches a phone that only enters trips. They are also excluded
+  from the service worker precache and cached at runtime on first use instead,
+  which keeps the install payload at ~760 KB rather than ~2 MB.
+- PDF text goes through `pdfSafe()` in `src/lib/format.ts`. jsPDF's built-in
+  Helvetica is WinAnsi-encoded and has no rupee glyph; handed one it switches the
+  string to UTF-16 while still drawing through a Latin-1 font, and the line comes
+  out as mangled, space-separated digits. Amounts in PDFs are written `Rs.
+  1,20,000.00`, which is what most Indian invoices print anyway. Arrows, dashes and
+  smart quotes are substituted the same way. On screen the rupee symbol is used
+  normally.
+- SheetJS is installed from `https://cdn.sheetjs.com/...`, not from npm. The npm
+  package is abandoned at 0.18.5 with two open advisories; the CDN tarball is the
+  maintainers' supported distribution and is patched. This means a build needs
+  network access to that host — which Cloudflare Pages has.
 
 ### Notes on the data model
 

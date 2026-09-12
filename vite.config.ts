@@ -27,8 +27,30 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // Supabase responses are never precached — data freshness matters more than
-        // offline reads in Phase 1. Offline write-queueing arrives in Phase 2.
+        // The export libraries are ~1.2 MB and are dynamically imported, so
+        // precaching them would download the lot on install for a phone that
+        // may only ever enter trips. They are fetched on the first export
+        // instead, and cached by the runtime rule below.
+        globIgnores: [
+          '**/xlsx-*.js',
+          '**/jspdf*.js',
+          '**/jszip*.js',
+          '**/html2canvas*.js',
+          '**/purify*.js',
+          '**/index.es-*.js',
+        ],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/(xlsx|jspdf|jszip|html2canvas|purify|index\.es)-.*\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'export-libs',
+              expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 90 },
+            },
+          },
+        ],
+        // Supabase responses are never precached — for an accounts app a stale
+        // balance is worse than no balance. Offline write-queueing is still to come.
         navigateFallbackDenylist: [/^\/api/],
       },
     }),
