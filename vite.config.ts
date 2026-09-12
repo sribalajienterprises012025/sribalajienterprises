@@ -3,10 +3,19 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
+// The demo build (`npm run build:demo`) is a self-contained bundle that talks to
+// an in-browser stand-in for Postgres. It is published as static files under an
+// unknown path, so asset URLs must be relative and there is no service worker
+// to install — a cached shell for a throwaway demo is only a way to serve stale
+// code. Production is unaffected.
+const isDemo = process.env.VITE_DEMO === '1'
+
 export default defineConfig({
+  base: isDemo ? './' : '/',
   plugins: [
     react(),
     VitePWA({
+      disable: isDemo,
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {

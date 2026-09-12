@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Pill } from '@/components/ui/StatusPill'
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States'
 import { useBusinessId, useCanEdit } from '@/hooks/useAuth'
-import { formatCurrency, formatCurrencyCompact, humanize } from '@/lib/format'
+import { formatCurrency, formatCurrencyCompact, humanize, plural } from '@/lib/format'
 import { queryKeys } from '@/lib/queries/keys'
 import {
   listBrokerLedger,
@@ -116,7 +116,7 @@ function ClientLedger() {
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-900">{row.client_name}</p>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    {row.trip_count} trips · {row.invoice_count} invoices
+                    {plural(row.trip_count, 'trip')} · {plural(row.invoice_count, 'invoice')}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -224,7 +224,7 @@ function BrokerLedger() {
               <div className="min-w-0">
                 <p className="font-semibold text-slate-900">{row.broker_name}</p>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  {row.trip_count} trips ·{' '}
+                  {plural(row.trip_count, 'trip')} ·{' '}
                   {row.commission_type === 'percentage'
                     ? `${row.commission_rate ?? 0}%`
                     : formatCurrency(row.commission_rate)}
@@ -335,7 +335,7 @@ function DriverLedger() {
               <div className="min-w-0">
                 <p className="font-semibold text-slate-900">{row.driver_name}</p>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  {humanize(row.salary_type)} · {row.trip_count} trips
+                  {humanize(row.salary_type)} · {plural(row.trip_count, 'trip')}
                 </p>
               </div>
               <div className="shrink-0 text-right">

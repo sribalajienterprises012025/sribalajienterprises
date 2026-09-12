@@ -140,6 +140,14 @@ export function pdfSafe(value: string | number | null | undefined): string {
 }
 
 /**
+ * `3 trips`, `1 trip`. Counts are shown next to almost every list in this app,
+ * and "1 trips" is the kind of thing an owner notices immediately.
+ */
+export function plural(count: number, singular: string, many = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : many}`
+}
+
+/**
  * Code point to ASCII, for the characters that actually turn up in this app's
  * data and labels. Keyed by code point rather than written as literals so the
  * source stays plain ASCII and cannot be mangled by an editor or a tool.

@@ -1,10 +1,10 @@
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { Sheet } from '@/components/ui/Sheet'
+import { zodForm } from '@/lib/form'
 import type { Broker, Client } from '@/types'
 import type { BrokerInput, ClientInput } from '@/lib/queries/parties'
 
@@ -60,7 +60,9 @@ const brokerSchema = z.object({
 })
 
 type ClientFormValues = z.input<typeof clientSchema>
+type ClientFormOutput = z.output<typeof clientSchema>
 type BrokerFormValues = z.input<typeof brokerSchema>
+type BrokerFormOutput = z.output<typeof brokerSchema>
 
 export function ClientForm({
   open,
@@ -79,8 +81,8 @@ export function ClientForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ClientFormValues>({
-    resolver: zodResolver(clientSchema),
+  } = useForm<ClientFormValues, unknown, ClientFormOutput>({
+    resolver: zodForm(clientSchema),
     defaultValues: {
       name: client?.name ?? '',
       gstin: client?.gstin ?? '',
@@ -93,7 +95,7 @@ export function ClientForm({
     },
   })
 
-  const submit = handleSubmit((values) => onSubmit(clientSchema.parse(values)))
+  const submit = handleSubmit((values) => onSubmit(values))
 
   return (
     <Sheet
@@ -206,8 +208,8 @@ export function BrokerForm({
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<BrokerFormValues>({
-    resolver: zodResolver(brokerSchema),
+  } = useForm<BrokerFormValues, unknown, BrokerFormOutput>({
+    resolver: zodForm(brokerSchema),
     defaultValues: {
       name: broker?.name ?? '',
       contact: broker?.contact ?? '',
@@ -220,7 +222,7 @@ export function BrokerForm({
   })
 
   const commissionType = watch('commission_type')
-  const submit = handleSubmit((values) => onSubmit(brokerSchema.parse(values)))
+  const submit = handleSubmit((values) => onSubmit(values))
 
   return (
     <Sheet

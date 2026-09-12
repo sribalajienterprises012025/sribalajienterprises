@@ -1,10 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, HashRouter } from 'react-router-dom'
 import { isSecretKeyMistake, isSupabaseConfigured } from '@/lib/supabase'
 import { SetupRequiredPage } from '@/features/auth/SetupRequiredPage'
 import { AuthProvider } from './AuthProvider'
 import { ToastProvider } from './ToastProvider'
 import { AppRoutes } from './routes'
+
+const IS_DEMO = import.meta.env.VITE_DEMO === '1'
+
+/**
+ * The demo is published as a static bundle with no server to rewrite unknown
+ * paths, so its deep links live in the hash. Production is served by Cloudflare
+ * Pages with a catch-all rewrite, and keeps real URLs.
+ */
+const Router = IS_DEMO ? HashRouter : BrowserRouter
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,13 +40,13 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <Router>
         <AuthProvider>
           <ToastProvider>
             <AppRoutes />
           </ToastProvider>
         </AuthProvider>
-      </BrowserRouter>
+      </Router>
     </QueryClientProvider>
   )
 }

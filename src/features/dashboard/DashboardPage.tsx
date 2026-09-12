@@ -13,6 +13,7 @@ import {
   formatCurrency,
   formatCurrencyCompact,
   formatDateShort,
+  plural,
 } from '@/lib/format'
 import { queryKeys } from '@/lib/queries/keys'
 import { listTrips } from '@/lib/queries/trips'
@@ -129,7 +130,7 @@ export function DashboardPage() {
               <StatTile
                 label="Freight billed"
                 value={formatCurrencyCompact(summary.freight)}
-                detail={`${summary.tripCount} trips`}
+                detail={plural(summary.tripCount, 'trip')}
               />
               <StatTile
                 label="Outstanding"

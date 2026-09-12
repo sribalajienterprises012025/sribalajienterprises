@@ -1,11 +1,11 @@
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { Sheet } from '@/components/ui/Sheet'
 import { toDateInput, todayInput } from '@/lib/format'
+import { zodForm } from '@/lib/form'
 import type { Expense, Vehicle } from '@/types'
 import type { ExpenseInput } from '@/lib/queries/expenses'
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_VALUES } from './categories'
@@ -30,6 +30,7 @@ const expenseSchema = z.object({
 })
 
 type ExpenseFormValues = z.input<typeof expenseSchema>
+type ExpenseFormOutput = z.output<typeof expenseSchema>
 
 interface ExpenseFormProps {
   open: boolean
@@ -52,8 +53,8 @@ export function ExpenseForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ExpenseFormValues>({
-    resolver: zodResolver(expenseSchema),
+  } = useForm<ExpenseFormValues, unknown, ExpenseFormOutput>({
+    resolver: zodForm(expenseSchema),
     defaultValues: {
       date: expense ? toDateInput(expense.date) : todayInput(),
       category: expense?.category ?? 'fuel',
@@ -65,10 +66,9 @@ export function ExpenseForm({
   })
 
   const submit = handleSubmit((values) => {
-    const parsed = expenseSchema.parse(values)
     // trip_id stays on the record when editing; linking an expense to a trip
     // from this form arrives with the Phase 3 distribution screens.
-    onSubmit({ ...parsed, trip_id: expense?.trip_id ?? null })
+    onSubmit({ ...values, trip_id: expense?.trip_id ?? null })
   })
 
   return (

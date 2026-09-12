@@ -1,14 +1,19 @@
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { Sheet } from '@/components/ui/Sheet'
 import { formatCurrency, toDateInput, todayInput } from '@/lib/format'
+import { zodForm } from '@/lib/form'
 import type { Broker, Client, Driver, Trip, Vehicle } from '@/types'
 import type { TripInput } from '@/lib/queries/trips'
-import { balanceDue, tripSchema, type TripFormValues } from './tripSchema'
+import {
+  balanceDue,
+  tripSchema,
+  type TripFormOutput,
+  type TripFormValues,
+} from './tripSchema'
 
 interface TripFormProps {
   open: boolean
@@ -39,8 +44,8 @@ export function TripForm({
     watch,
     setValue,
     formState: { errors },
-  } = useForm<TripFormValues>({
-    resolver: zodResolver(tripSchema),
+  } = useForm<TripFormValues, unknown, TripFormOutput>({
+    resolver: zodForm(tripSchema),
     defaultValues: {
       trip_date: trip ? toDateInput(trip.trip_date) : todayInput(),
       vehicle_id: trip?.vehicle_id ?? '',
@@ -105,7 +110,8 @@ export function TripForm({
   }, [trip, partyType, partyId, freight, brokers, setValue])
 
   const parties = partyType === 'client' ? clients : brokers
-  const submit = handleSubmit((values) => onSubmit(tripSchema.parse(values) as TripInput))
+  // Already parsed by the resolver, so no second pass — see `zodForm`.
+  const submit = handleSubmit((values) => onSubmit(values as TripInput))
 
   const due = balanceDue({
     freight_amount: freight,

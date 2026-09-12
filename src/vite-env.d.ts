@@ -12,6 +12,11 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string
   /** Legacy browser key on older projects: a JWT, `eyJ…`. Still accepted. */
   readonly VITE_SUPABASE_ANON_KEY?: string
+  /**
+   * `1` builds the demo: an in-browser stand-in for Postgres, hash routing and
+   * no service worker. Anything else builds the real app.
+   */
+  readonly VITE_DEMO?: string
 }
 
 interface ImportMeta {

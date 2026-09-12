@@ -140,6 +140,27 @@ npm run dev
 Without credentials in `.env.local` the app shows a setup screen explaining what is
 missing, rather than failing on the first query.
 
+### Trying it without a database
+
+```bash
+npm run build:demo
+npx serve dist        # or any static server
+```
+
+The demo build is the same application with `src/demo/` standing in for Postgres:
+a `fetch` patch that answers PostgREST requests from data held in `localStorage`,
+the twelve report views recomputed in TypeScript from the same base rows, and the
+write side of the RLS policies reproduced so a helper still cannot touch master
+data and a CA still cannot save anything. Writes persist, so logging a trip really
+does move the dashboard, the client ledger and the P&L.
+
+None of it reaches a production build: `main.tsx` branches on `VITE_DEMO`, which is
+inlined at build time, so the demo modules are dropped as dead code. CI asserts
+both halves of that.
+
+It is genuinely useful for more than a look around — building it is what surfaced
+the `zodResolver` bug that had made every form in the app refuse to submit.
+
 ### Database
 
 The schema lives in versioned migration files, not in the Supabase dashboard.
@@ -160,6 +181,7 @@ that creates the business and the owner record together in a single transaction.
 |---|---|
 | `npm run dev` | Dev server on http://localhost:5173 |
 | `npm run build` | Typecheck, then production build to `dist/` |
+| `npm run build:demo` | Build the clickable demo — no Supabase needed, data in the browser |
 | `npm run preview` | Serve the production build locally |
 | `npm run typecheck` | TypeScript only, no build |
 | `npm run lint` | ESLint |

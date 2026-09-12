@@ -66,6 +66,33 @@ jobs:
           fi
           echo "no secret key in the build output"
 
+      # The bug this guards against made every form in the app unsubmittable:
+      # `zodResolver` hands `handleSubmit` the schema's *output*, so a second
+      # `schema.parse(values)` in a submit handler feeds transformed values back
+      # through the input schema and throws `Expected string, received null`.
+      # The resolver's own types claim otherwise, so a typecheck cannot catch
+      # it. Use `zodForm` from src/lib/form.ts and take the values as they come.
+      - name: Forms must not re-parse what the resolver already parsed
+        run: |
+          set -euo pipefail
+          if grep -rnE --include='*.tsx' '(Schema|schema)\.parse\((values|data)\)' src/; then
+            echo "::error::a submit handler above re-parses resolver output, which throws on every transform. Use zodForm and take the values as they arrive."
+            exit 1
+          fi
+          echo "no form re-parses resolver output"
+
+      # The demo is the only way to click through the whole app without a
+      # database, so it is worth keeping buildable rather than letting it rot.
+      # Runs last: it replaces dist/ with a build that is not production's.
+      - name: Build the demo
+        run: |
+          set -euo pipefail
+          npm run build:demo
+          test -f dist/demo.html
+          grep -q 'balaji-demo-data' dist/assets/*.js \
+            || { echo "::error::the demo build carries no demo backend"; exit 1; }
+          echo "demo build is intact"
+
   database:
     name: Migrations and RLS assertions
     runs-on: ubuntu-latest

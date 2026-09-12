@@ -18,6 +18,7 @@ import {
   formatCurrencyPdf,
   formatKm,
   formatNumber,
+  plural,
 } from '@/lib/format'
 import { stateName } from '@/lib/gst'
 import { queryKeys } from '@/lib/queries/keys'
@@ -551,7 +552,7 @@ function PlReport({
                     {monthLabel(row.month)}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {row.trip_count} trips · {formatCurrency(row.freight)} freight
+                    {plural(row.trip_count, 'trip')} · {formatCurrency(row.freight)} freight
                   </p>
                 </div>
                 <p
@@ -660,7 +661,7 @@ function VehicleReport({ rows }: { rows: ReturnType<typeof totalByVehicle> }) {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">{vehicle.reg_no}</p>
                   <p className="text-xs text-slate-500">
-                    {vehicle.trip_count} trips · {formatKm(vehicle.distance_km)}
+                    {plural(vehicle.trip_count, 'trip')} · {formatKm(vehicle.distance_km)}
                   </p>
                 </div>
                 <p

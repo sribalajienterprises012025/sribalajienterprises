@@ -1,11 +1,11 @@
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { Sheet } from '@/components/ui/Sheet'
 import { toDateInput } from '@/lib/format'
+import { zodForm } from '@/lib/form'
 import type { Vehicle } from '@/types'
 import type { VehicleInput } from '@/lib/queries/vehicles'
 
@@ -45,6 +45,7 @@ const vehicleSchema = z.object({
 })
 
 type VehicleFormValues = z.input<typeof vehicleSchema>
+type VehicleFormOutput = z.output<typeof vehicleSchema>
 
 interface VehicleFormProps {
   open: boolean
@@ -65,8 +66,8 @@ export function VehicleForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<VehicleFormValues>({
-    resolver: zodResolver(vehicleSchema),
+  } = useForm<VehicleFormValues, unknown, VehicleFormOutput>({
+    resolver: zodForm(vehicleSchema),
     // Remounting on open (see key below) means defaults are read fresh each
     // time, so editing a second vehicle never shows the first one's values.
     defaultValues: {
@@ -83,8 +84,7 @@ export function VehicleForm({
   })
 
   const submit = handleSubmit((values) => {
-    const parsed = vehicleSchema.parse(values)
-    onSubmit({ ...parsed, assigned_driver_id: vehicle?.assigned_driver_id ?? null })
+    onSubmit({ ...values, assigned_driver_id: vehicle?.assigned_driver_id ?? null })
   })
 
   return (

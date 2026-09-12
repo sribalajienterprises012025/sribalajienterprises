@@ -1,11 +1,11 @@
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { Sheet } from '@/components/ui/Sheet'
 import { toDateInput } from '@/lib/format'
+import { zodForm } from '@/lib/form'
 import type { Driver, Vehicle } from '@/types'
 import type { DriverInput } from '@/lib/queries/drivers'
 
@@ -49,6 +49,7 @@ const driverSchema = z.object({
 })
 
 type DriverFormValues = z.input<typeof driverSchema>
+type DriverFormOutput = z.output<typeof driverSchema>
 
 interface DriverFormProps {
   open: boolean
@@ -72,8 +73,8 @@ export function DriverForm({
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<DriverFormValues>({
-    resolver: zodResolver(driverSchema),
+  } = useForm<DriverFormValues, unknown, DriverFormOutput>({
+    resolver: zodForm(driverSchema),
     defaultValues: {
       name: driver?.name ?? '',
       phone: driver?.phone ?? '',
@@ -91,7 +92,7 @@ export function DriverForm({
   const salaryType = watch('salary_type')
 
   const submit = handleSubmit((values) => {
-    onSubmit(driverSchema.parse(values))
+    onSubmit(values)
   })
 
   return (
