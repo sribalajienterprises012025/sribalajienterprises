@@ -1,0 +1,15 @@
+# Hashed build assets are immutable, so they can be cached hard.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The shell and service worker must always be revalidated, otherwise a deploy
+# never reaches a phone that already has the app installed.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
