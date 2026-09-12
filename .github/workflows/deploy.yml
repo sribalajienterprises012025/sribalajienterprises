@@ -68,48 +68,87 @@ jobs:
         with:
           version: latest
 
-      - name: Check the credentials are present
+      # A secret cannot be read inside an `if:` condition, so which path to take
+      # is decided here and published as a step output instead.
+      - name: Choose how to connect
+        id: creds
         env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          missing=0
-          [ -n "$ACCESS_TOKEN" ] || { echo "::error::SUPABASE_ACCESS_TOKEN is not set in repository secrets."; missing=1; }
-          [ -n "$DB_PASSWORD" ]  || { echo "::error::SUPABASE_DB_PASSWORD is not set in repository secrets."; missing=1; }
-          if [ "$missing" = 1 ]; then
-            echo "::error::Add them at Settings -> Secrets and variables -> Actions. See README, 'Automatic deployment'."
+          if [ -n "$DB_URL" ]; then
+            echo "using SUPABASE_DB_URL (grants this one database)"
+            echo "mode=db_url" >> "$GITHUB_OUTPUT"
+          elif [ -n "$ACCESS_TOKEN" ] && [ -n "$DB_PASSWORD" ]; then
+            echo "using SUPABASE_ACCESS_TOKEN + SUPABASE_DB_PASSWORD"
+            echo "mode=linked" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No database credential is configured."
+            echo "::error::Add SUPABASE_DB_URL (preferred — it grants only this database), or both SUPABASE_ACCESS_TOKEN and SUPABASE_DB_PASSWORD."
+            echo "::error::Settings -> Secrets and variables -> Actions. See README, 'Automatic deployment'."
             exit 1
           fi
 
-      - name: Link the project
+      # Preferred path. A connection string grants exactly one database, where
+      # an account access token grants every project on the account. Use the
+      # SESSION POOLER string from the dashboard: GitHub runners have no IPv6,
+      # and a new project's direct database host is IPv6-only.
+      - name: Push migrations (connection string)
+        if: steps.creds.outputs.mode == 'db_url'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$DB_URL" --include-all
+
+      - name: Push migrations (linked project)
+        if: steps.creds.outputs.mode == 'linked'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase migration list --linked || true
+          supabase db push --include-all
 
-      # Printed before anything is applied, so the run log shows what changed
-      # even if the push itself later fails.
-      - name: Show what is about to change
+  # Separate job, because deploying a function is the only part that needs an
+  # account-wide access token. Without one the migrations above still run and
+  # the app still works — only "Create a login" stays unavailable, and its own
+  # screen says so.
+  functions:
+    name: Deploy the create-staff function
+    needs: database
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if no access token is configured
+        id: check
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase migration list --linked || true
+          ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "::notice::SUPABASE_ACCESS_TOKEN is not set, so the create-staff function was not deployed. Staff invitations work regardless; add the token if you also want to create logins directly."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Push migrations
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase db push --include-all
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.deploy == 'true'
+        with:
+          version: latest
 
-      - name: Deploy the create-staff function
+      - name: Deploy
+        if: steps.check.outputs.deploy == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase functions deploy create-staff --project-ref "$SUPABASE_PROJECT_REF"
 
   verify:
     name: Check what actually went live
-    needs: database
+    needs: [database, functions]
     if: ${{ !inputs.skip_verify }}
     runs-on: ubuntu-latest
     steps:

@@ -176,16 +176,37 @@ that what actually went live is correct.
 
 ### One-time setup
 
-Two repository secrets, at **Settings → Secrets and variables → Actions**.
-This is the only part that cannot be automated — automation needs credentials,
-and nothing else can create them on your behalf.
+One repository secret, at **Settings → Secrets and variables → Actions**. This
+is the only part that cannot be automated — automation needs credentials, and
+nothing else can create them on your behalf.
 
-| Secret | Where to get it |
-|---|---|
-| `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens → Generate new token |
-| `SUPABASE_DB_PASSWORD` | The database password from when you created the project |
+| Secret | What it grants | Where to get it |
+|---|---|---|
+| `SUPABASE_DB_URL` | This one database | Supabase → **Connect** → **Session pooler** → copy the URI, and substitute your database password for `[YOUR-PASSWORD]` |
 
-Nothing else. In particular:
+Use the **Session pooler** string, not the direct one. GitHub's runners have no
+IPv6, and a new Supabase project's direct database host is IPv6-only — a direct
+URL fails to connect from Actions with nothing useful in the message.
+
+If the password contains `@`, `:`, `/`, `?`, `#` or `%`, percent-encode it
+(`@` becomes `%40`, and so on) or the URL parses wrongly.
+
+#### Optionally, a second secret
+
+| Secret | What it grants | Needed for |
+|---|---|---|
+| `SUPABASE_ACCESS_TOKEN` | Every project on your Supabase account | Auto-deploying the `create-staff` function |
+
+Without it, migrations still apply and the app still works — only **Settings →
+Staff → Create a login** stays unavailable, and its own screen says so.
+Invitations are unaffected. Given the token is account-wide and the connection
+string is not, adding it is worth a deliberate decision rather than a default.
+
+The older combination of `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_PASSWORD` also
+works for migrations if `SUPABASE_DB_URL` is absent; the workflow picks whichever
+is configured.
+
+#### Nothing else
 
 - **No Cloudflare build settings.** `wrangler.toml` declares
   `pages_build_output_dir = "dist"`, so the output directory is not a dashboard
@@ -216,9 +237,11 @@ Nothing else. In particular:
    touches the production database until this passes. This is what makes
    automatic migrations safe rather than reckless: a policy that leaks across
    businesses, or a ledger that double-counts, fails here.
-2. **database** — `supabase db push` and `supabase functions deploy`, after
-   printing `migration list` so the run log records what changed.
-3. **verify** — polls the live site until the new bundle appears, then asserts
+2. **database** — `supabase db push`, using whichever credential is configured.
+3. **functions** — deploys `create-staff`, or skips with a notice when no
+   access token is set. Kept separate so the account-wide token is only needed
+   by the one job that genuinely requires it.
+4. **verify** — polls the live site until the new bundle appears, then asserts
    it is configured, carries no secret key, resolves deep links, and that the
    `vehicles` table actually exists. A silent blank page becomes a red X with
    the remedy in the error message.
