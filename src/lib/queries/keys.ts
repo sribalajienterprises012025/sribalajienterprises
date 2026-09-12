@@ -67,4 +67,15 @@ export const queryKeys = {
     ['vehicle-monthly', businessId, range] as const,
   complianceGaps: (businessId: string, range: unknown) =>
     ['compliance-gaps', businessId, range] as const,
+
+  serviceDue: (businessId: string) => ['service-due', businessId] as const,
+  maintenance: (businessId: string, vehicleId?: string) =>
+    ['maintenance', businessId, vehicleId ?? null] as const,
+  claims: (businessId: string) => ['claims', businessId] as const,
+
+  staff: (businessId: string) => ['staff', businessId] as const,
+  invites: (businessId: string) => ['invites', businessId] as const,
+  myInvite: ['my-invite'] as const,
+  audit: (businessId: string, filters?: unknown) =>
+    ['audit', businessId, filters ?? null] as const,
 } as const

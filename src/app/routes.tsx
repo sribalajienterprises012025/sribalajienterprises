@@ -12,6 +12,7 @@ import { InvoicesPage } from '@/features/accounts/invoices/InvoicesPage'
 import { LedgersPage } from '@/features/accounts/ledgers/LedgersPage'
 import { DistributionPage } from '@/features/distribution/DistributionPage'
 import { ReportsPage } from '@/features/accounts/reports/ReportsPage'
+import { AssetsPage } from '@/features/assets/AssetsPage'
 import { RequireRole } from './RequireRole'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 
@@ -41,6 +42,7 @@ export function AppRoutes() {
         />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="drivers" element={<DriversPage />} />
+        <Route path="assets" element={<AssetsPage />} />
         <Route path="parties" element={<PartiesPage />} />
         <Route path="more" element={<MorePage />} />
         <Route

@@ -498,3 +498,110 @@ export interface ComplianceGapRow {
   missing_pod: boolean
   not_invoiced: boolean
 }
+
+// =============================================================================
+// Phase 5 — asset care, staff and audit
+// =============================================================================
+
+export type ServiceType =
+  | 'engine_oil'
+  | 'gearbox_oil'
+  | 'differential_oil'
+  | 'air_filter'
+  | 'tyre_rotation'
+  | 'tyre_change'
+  | 'battery'
+  | 'brake'
+  | 'clutch'
+  | 'general_service'
+  | 'greasing'
+  | 'other'
+
+export type ServiceStatus = 'ok' | 'due_soon' | 'overdue' | 'not_started'
+export type MaintenanceType = 'tyre' | 'battery' | 'service' | 'repair' | 'other'
+export type ClaimStatus = 'filed' | 'under_review' | 'settled' | 'rejected'
+export type AuditAction = 'insert' | 'update' | 'delete'
+
+export interface ServiceSchedule extends Timestamps {
+  id: string
+  business_id: string
+  vehicle_id: string
+  service_type: ServiceType
+  interval_km: number | null
+  interval_days: number | null
+  last_done_odometer: number | null
+  last_done_date: string | null
+  note: string | null
+  active: boolean
+}
+
+export interface ServiceDueRow {
+  id: string
+  business_id: string
+  vehicle_id: string
+  reg_no: string
+  current_odometer: number
+  service_type: ServiceType
+  interval_km: number | null
+  interval_days: number | null
+  last_done_odometer: number | null
+  last_done_date: string | null
+  note: string | null
+  due_at_odometer: number | null
+  due_on_date: string | null
+  km_remaining: number | null
+  days_remaining: number | null
+  status: ServiceStatus
+}
+
+export interface MaintenanceLogEntry extends Timestamps {
+  id: string
+  business_id: string
+  vehicle_id: string
+  service_schedule_id: string | null
+  type: MaintenanceType
+  date: string
+  cost: number
+  odometer_reading: number | null
+  vendor: string | null
+  note: string | null
+}
+
+export interface InsuranceClaim extends Timestamps {
+  id: string
+  business_id: string
+  vehicle_id: string
+  claim_date: string
+  incident_note: string | null
+  claim_amount: number
+  settlement_amount: number | null
+  status: ClaimStatus
+}
+
+export interface Invite extends Timestamps {
+  id: string
+  business_id: string
+  email: string
+  name: string | null
+  role: Exclude<Role, 'owner'>
+  invited_by: string | null
+  accepted_at: string | null
+  accepted_by: string | null
+}
+
+export interface AuditEntry {
+  id: number
+  business_id: string | null
+  user_id: string | null
+  user_name: string | null
+  user_role: Role | null
+  table_name: string
+  record_id: string | null
+  action: AuditAction
+  changed_at: string
+  /**
+   * For an update, a map of changed column to { from, to }.
+   * For an insert or a delete, the whole row.
+   */
+  diff: Record<string, unknown> | null
+}

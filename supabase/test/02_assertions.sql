@@ -563,3 +563,274 @@ select pg_temp.expect('owner B sees no compliance gaps of A',
   (select count(*)::int from public.compliance_gaps), 0);
 
 reset role;
+
+-- =============================================================================
+-- Phase 5 — asset care
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+-- The vehicle sits at 180,000 km (the seed). Three schedules, deliberately
+-- at different distances from due.
+insert into public.service_schedules (
+  id, business_id, vehicle_id, service_type, interval_km, last_done_odometer, last_done_date
+) values
+  ('99990000-0000-0000-0000-000000000001', :'biz_a', :'veh_a', 'engine_oil',
+   15000, 170000, current_date - 60),
+  ('99990000-0000-0000-0000-000000000002', :'biz_a', :'veh_a', 'general_service',
+   20000, 165000, current_date - 90),
+  ('99990000-0000-0000-0000-000000000003', :'biz_a', :'veh_a', 'tyre_rotation',
+   10000, 179500, current_date - 10);
+
+-- engine_oil due at 185,000; 5,000 km to go
+select pg_temp.expect('service due computes the odometer it falls due at',
+  (select due_at_odometer::int from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 185000);
+select pg_temp.expect('service due computes km remaining',
+  (select km_remaining::int from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 5000);
+select pg_temp.expect('a service 5000 km away is ok',
+  (select status from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 'ok');
+
+-- general_service due at 185,000 too... no: 165,000 + 20,000 = 185,000.
+-- tyre_rotation due at 189,500 - wait, 179,500 + 10,000 = 189,500, so 9,500 to go.
+select pg_temp.expect('tyre rotation km remaining',
+  (select km_remaining::int from public.service_due
+   where id = '99990000-0000-0000-0000-000000000003'), 9500);
+
+-- Push the odometer past a due point and the status must follow.
+update public.vehicles set current_odometer = 184500 where id = :'veh_a';
+select pg_temp.expect('within 1000 km reads due soon',
+  (select status from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 'due_soon');
+
+update public.vehicles set current_odometer = 186000 where id = :'veh_a';
+select pg_temp.expect('past the due point reads overdue',
+  (select status from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 'overdue');
+
+-- A day-interval schedule comes due on time even with no kilometres.
+insert into public.service_schedules (
+  id, business_id, vehicle_id, service_type, interval_days, last_done_date
+) values (
+  '99990000-0000-0000-0000-000000000004', :'biz_a', :'veh_a', 'greasing',
+  30, current_date - 29
+);
+select pg_temp.expect('a day-interval schedule reads due soon at 1 day left',
+  (select status from public.service_due
+   where id = '99990000-0000-0000-0000-000000000004'), 'due_soon');
+
+-- A schedule never marked done has no baseline to measure from.
+insert into public.service_schedules (business_id, vehicle_id, service_type, interval_km)
+values (:'biz_a', :'veh_a', 'battery', 40000);
+select pg_temp.expect('a schedule never done reads not_started',
+  (select status from public.service_due
+   where service_type = 'battery' and vehicle_id = :'veh_a'), 'not_started');
+
+select pg_temp.expect_denied('a schedule with no interval is rejected',
+  format('insert into public.service_schedules (business_id, vehicle_id, service_type)
+          values (%L, %L, ''clutch'')', :'biz_a', :'veh_a'));
+select pg_temp.expect_denied('one schedule per service type per vehicle',
+  format('insert into public.service_schedules
+            (business_id, vehicle_id, service_type, interval_km)
+          values (%L, %L, ''engine_oil'', 15000)', :'biz_a', :'veh_a'));
+
+-- complete_service must log the cost and reset the schedule together.
+select public.complete_service(
+  '99990000-0000-0000-0000-000000000001', current_date, 186200, 9400,
+  'Sri Ganesh Motors', 'Oil + filter'
+) is not null as logged;
+
+select pg_temp.expect('completing a service resets the schedule',
+  (select last_done_odometer::int from public.service_schedules
+   where id = '99990000-0000-0000-0000-000000000001'), 186200);
+select pg_temp.expect('the service is no longer overdue',
+  (select status from public.service_due
+   where id = '99990000-0000-0000-0000-000000000001'), 'ok');
+select pg_temp.expect('completing a service logs the cost',
+  (select cost::numeric from public.vehicle_maintenance_log
+   where service_schedule_id = '99990000-0000-0000-0000-000000000001'), 9400::numeric);
+select pg_temp.expect('completing a service carries the odometer forward',
+  (select current_odometer::int from public.vehicles where id = :'veh_a'), 186200);
+
+-- A helper does the workshop entry; the schedule itself is the owner's.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select public.complete_service(
+  '99990000-0000-0000-0000-000000000003', current_date, 186300, 2200, 'Tyre House', null
+) is not null as helper_logged;
+select pg_temp.expect_denied('helper cannot create a service schedule',
+  format('insert into public.service_schedules (business_id, vehicle_id, service_type, interval_km)
+          values (%L, %L, ''air_filter'', 20000)', :'biz_a', :'veh_a'));
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'ca_a', false);
+select pg_temp.expect_denied('CA cannot complete a service',
+  'select public.complete_service(''99990000-0000-0000-0000-000000000002'', current_date, 190000, 100)');
+
+-- And not across tenants, even through the definer function.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_b', false);
+select pg_temp.expect_denied('cannot complete another business''s service',
+  'select public.complete_service(''99990000-0000-0000-0000-000000000002'', current_date, 190000, 100)');
+select pg_temp.expect('owner B sees no schedules of A',
+  (select count(*)::int from public.service_due), 0);
+
+-- =============================================================================
+-- Phase 5 — staff invitations
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+insert into public.invites (business_id, email, name, role, invited_by)
+values (:'biz_a', 'NewHelper@Example.com', 'New Helper', 'helper', :'owner_a');
+
+select pg_temp.expect('owner sees the invite',
+  (select count(*)::int from public.invites), 1);
+select pg_temp.expect_denied('an owner cannot be invited by email',
+  format('insert into public.invites (business_id, email, role)
+          values (%L, ''boss@example.com'', ''owner'')', :'biz_a'));
+select pg_temp.expect_denied('one pending invite per email',
+  format('insert into public.invites (business_id, email, role)
+          values (%L, ''newhelper@example.com'', ''ca'')', :'biz_a'));
+
+-- A helper cannot invite anyone.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect_denied('helper cannot invite staff',
+  format('insert into public.invites (business_id, email, role)
+          values (%L, ''sneaky@example.com'', ''helper'')', :'biz_a'));
+
+-- The invitee signs up. Capitalisation of the email must not matter.
+reset role;
+insert into auth.users (id, email)
+values ('aaaa0000-0000-0000-0000-00000000000a', 'newhelper@example.com');
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aaaa0000-0000-0000-0000-00000000000a', false);
+
+select pg_temp.expect('an invitee with no profile can still see their invite',
+  (select count(*)::int from public.invites), 1);
+select pg_temp.expect('claiming an invite joins the business',
+  public.claim_invite(), 'aaaaaaaa-0000-0000-0000-00000000000a'::uuid);
+select pg_temp.expect('the claimed role is the invited role',
+  (select role from public.users where id = 'aaaa0000-0000-0000-0000-00000000000a'), 'helper');
+select pg_temp.expect_denied('an invite cannot be claimed twice',
+  'select public.claim_invite()');
+
+-- Someone with no invitation must not be able to join.
+reset role;
+insert into auth.users (id, email)
+values ('bbbb0000-0000-0000-0000-00000000000b', 'stranger@example.com');
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'bbbb0000-0000-0000-0000-00000000000b', false);
+select pg_temp.expect('a stranger sees no invites',
+  (select count(*)::int from public.invites), 0);
+select pg_temp.expect_denied('a stranger cannot claim their way in',
+  'select public.claim_invite()');
+
+-- =============================================================================
+-- Phase 5 — audit trail
+-- =============================================================================
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+
+-- An update records only the columns that changed, as from/to pairs.
+update public.trips set freight_amount = 55000 where id = :'trip1';
+
+select pg_temp.expect('an update is recorded',
+  (select count(*)::int from public.audit_log
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'), 1);
+select pg_temp.expect('the diff records the old value',
+  (select (diff -> 'freight_amount' ->> 'from') from public.audit_log
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'
+   order by changed_at desc limit 1), '50000.00');
+select pg_temp.expect('the diff records the new value',
+  (select (diff -> 'freight_amount' ->> 'to') from public.audit_log
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'
+   order by changed_at desc limit 1), '55000.00');
+select pg_temp.expect('the diff carries only what changed',
+  (select count(*)::int from jsonb_object_keys(
+     (select diff from public.audit_log
+      where table_name = 'trips' and record_id = :'trip1' and action = 'update'
+      order by changed_at desc limit 1)) ), 1);
+select pg_temp.expect('the actor is recorded',
+  (select user_id from public.audit_log
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'
+   order by changed_at desc limit 1), :'owner_a'::uuid);
+select pg_temp.expect('the audit feed resolves the actor''s name',
+  (select user_name from public.audit_feed
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'
+   order by changed_at desc limit 1), 'Owner A');
+
+-- A write that changes nothing is not worth an entry.
+update public.trips set freight_amount = 55000 where id = :'trip1';
+select pg_temp.expect('a no-op update is not logged',
+  (select count(*)::int from public.audit_log
+   where table_name = 'trips' and record_id = :'trip1' and action = 'update'), 1);
+
+-- Deletes keep the whole row, since there is nothing left to look at after.
+insert into public.expenses (id, business_id, category, date, amount, payment_mode)
+values ('cccc0000-0000-0000-0000-00000000000c', :'biz_a', 'toll', current_date, 750, 'cash');
+delete from public.expenses where id = 'cccc0000-0000-0000-0000-00000000000c';
+select pg_temp.expect('a delete is recorded with the row',
+  (select (diff ->> 'amount') from public.audit_log
+   where table_name = 'expenses' and record_id = 'cccc0000-0000-0000-0000-00000000000c'
+     and action = 'delete'), '750.00');
+
+-- businesses keys on id rather than business_id, hence its own trigger arg.
+update public.businesses set address = 'Kukatpally, Hyderabad' where id = :'biz_a';
+select pg_temp.expect('the business row is audited under its own id',
+  (select business_id from public.audit_log
+   where table_name = 'businesses' order by changed_at desc limit 1), :'biz_a'::uuid);
+
+-- The log is the owner's to read, and nobody's to write or rewrite.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect('helper cannot read the audit log',
+  (select count(*)::int from public.audit_log), 0);
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'ca_a', false);
+select pg_temp.expect('CA cannot read the audit log',
+  (select count(*)::int from public.audit_log), 0);
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+select pg_temp.expect('owner can read the audit log',
+  (select count(*)::int > 0 from public.audit_log), true);
+select pg_temp.expect_denied('nobody can forge an audit entry',
+  format('insert into public.audit_log (business_id, table_name, action)
+          values (%L, ''trips'', ''update'')', :'biz_a'));
+select pg_temp.expect_no_write('nobody can rewrite history',
+  'update public.audit_log set action = ''insert'' where action = ''update''',
+  format('select count(*)::text from public.audit_log
+          where action = ''update'' and business_id = %L', :'biz_a'),
+  (select count(*)::text from public.audit_log
+   where action = 'update' and business_id = 'aaaaaaaa-0000-0000-0000-00000000000a'));
+
+-- Tenancy holds on the log too.
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_b', false);
+-- B legitimately sees its own entries (the seed's inserts are audited too),
+-- so the isolation check has to name A's rows rather than count everything.
+select pg_temp.expect('owner B sees no audit entries of A',
+  (select count(*)::int from public.audit_log where business_id = :'biz_a'), 0);
+select pg_temp.expect('owner B does see its own audit entries',
+  (select count(*)::int > 0 from public.audit_log), true);
+select pg_temp.expect('owner B sees no invites of A',
+  (select count(*)::int from public.invites), 0);
+
+reset role;

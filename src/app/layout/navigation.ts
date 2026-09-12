@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/reports', label: 'Reports', icon: '📈', roles: ['owner', 'ca'] },
   { to: '/vehicles', label: 'Vehicles', icon: '🚛' },
   { to: '/drivers', label: 'Drivers', icon: '👤' },
+  { to: '/assets', label: 'Asset care', icon: '🔧' },
   { to: '/parties', label: 'Parties', icon: '🤝' },
   { to: '/settings', label: 'Settings', icon: '⚙️', roles: ['owner'] },
 ]

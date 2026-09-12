@@ -13,8 +13,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full technical design
 
 ## Status
 
-**Phase 1 is built and working.** Each phase is usable on its own, so the app can
-go into daily use now and grow from there.
+**All five phases are built.** Nothing is stubbed or mocked; the remaining work is
+pointing it at a real Supabase project and deploying it.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -22,11 +22,11 @@ go into daily use now and grow from there.
 | 2 | Invoicing (GST / non-GST) · ledgers · credit & debit notes · receipts · driver advances and salary | ✅ Done |
 | 3 | Distribution planning · multi-stop and multi-vehicle | ✅ Done |
 | 4 | Reports · CA export pack · PDF and Excel export | ✅ Done |
-| 5 | Asset care (service-by-km, tyres, claims) · helper & CA roles in-app · audit trail | Planned |
+| 5 | Asset care (service-by-km, tyres, claims) · helper & CA roles in-app · audit trail | ✅ Done |
 
-The full database schema for all five phases is already migrated, so later phases
-add screens rather than reshaping tables. Role permissions and the storage bucket
-are enforced in the database today, ahead of the Phase 5 UI for managing staff.
+Still to come, deliberately left out: offline write-queueing (the app needs a
+connection to save), and push notifications for document expiry, which is the one
+feature that would need a native wrapper such as Capacitor.
 
 ### What Phase 1 gives you
 
@@ -90,6 +90,22 @@ are enforced in the database today, ahead of the Phase 5 UI for managing staff.
   the three ledgers, compliance gaps), and a plain-text README stating the period
   and how the numbers were arrived at. Built entirely in the browser — there is no
   server-side job to run or pay for.
+
+### What Phase 5 adds
+
+- **Service by kilometres** — an interval per truck per service item (engine oil
+  every 15,000 km, greasing every 30 days, or both, whichever comes first). Due
+  status is measured against the odometer your trips already keep current, so
+  nothing has to be read off a dial and typed in separately. Overdue sorts first.
+- **Mark done in one step** — logs the cost to the workshop history, restarts the
+  interval and carries the odometer forward in a single database transaction, so a
+  truck can never show a service as overdue while its bill is already on the books.
+- **Insurance claims** — filed through to settled, with the shortfall against what
+  was claimed.
+- **Staff access** — an owner invites a helper or a CA by email; the invitee signs
+  up and accepts on first sign-in. Roles are changeable, access is revocable.
+- **Activity** — an owner-only audit trail written by database triggers, showing
+  who changed what, with from/to values for each changed column.
 
 ---
 
@@ -160,11 +176,14 @@ try a change before it reaches the live app.
 
 ## Testing the database
 
-`npm run db:test` applies every migration to a scratch database and runs ~50
+`npm run db:test` applies every migration to a scratch database and runs 139
 assertions against it: that business A cannot see or write business B's rows, that a
 helper can log a trip but not add a vehicle, that a CA cannot write at all, that the
-ledger arithmetic comes out right, that invoice numbering is per-business and
-per-year, and that the storage policies enforce the tenant folder.
+ledger and P&L arithmetic comes out right, that invoice numbering is per-business and
+per-year, that a salary is not deducted twice, that service intervals come due at the
+right odometer, that an invitation cannot be claimed by someone it was not addressed
+to, that the audit trail records only what changed and cannot be forged or rewritten,
+and that the storage policies enforce the tenant folder.
 
 It needs a local Postgres 15+ reachable over TCP:
 
@@ -192,6 +211,7 @@ src/
     auth/            login, one-time onboarding, setup gate
     dashboard/
     trips/           trip list, entry form, trip maths
+    assets/           service schedules, workshop history, insurance claims
     distribution/     week planning grid, consignments, trip stops
     accounts/
       invoices/       invoice form with GST computation, credit/debit notes
@@ -201,7 +221,7 @@ src/
     vehicles/
     drivers/
     parties/         clients + brokers
-    settings/
+    settings/         business details, staff access, activity log
   components/ui/     buttons, fields, cards, status pills, bottom sheet
   lib/
     supabase.ts      the only API layer
@@ -213,7 +233,7 @@ src/
   types/             database types, mirroring the migrations
 
 supabase/migrations/ schema, RLS, storage, invoicing, ledgers, distribution,
-                     report views
+                     report views, asset care, staff invites, audit triggers
 supabase/test/       shim, seed and assertions for npm run db:test
 scripts/             PWA icon generator
 docs/                architecture
@@ -228,6 +248,21 @@ Enforced by RLS, so they hold even if someone bypasses the UI entirely.
 | **Owner** | Everything in the business | Everything |
 | **Helper** | Everything in the business | Trips, expenses, invoices, credit/debit notes |
 | **CA** | Everything in the business | Nothing — read and export only |
+
+### Notes on staff and the audit trail
+
+- `claim_invite()` only ever creates the caller's own profile row, only from an
+  invite matching the caller's own email as read from `auth.users` (not from a JWT
+  claim, which a client could shape), only once, and only at the role the invite
+  names.
+- The audit trail is written by `AFTER` triggers, not by the app, so a change made
+  through the Supabase dashboard or a direct SQL session is recorded too. An update
+  stores only the columns that actually changed as `{from, to}` pairs; inserts and
+  deletes store the whole row. `updated_at` is not treated as a change, and a write
+  that changed nothing is not logged at all.
+- Nobody can insert into or update `audit_log` — there is no policy that permits
+  it, including for the owner. The triggers write it as the table owner, which
+  bypasses RLS.
 
 ### Notes on exports
 
