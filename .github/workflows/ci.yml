@@ -1,0 +1,101 @@
+name: CI
+
+# Every push and every pull request. The database assertions are the point:
+# they catch the class of mistake that only shows up in Postgres — a policy that
+# leaks across businesses, a ledger that double-counts, a constraint that
+# rejects what the app sends.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight run on the same ref pointless.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Typecheck, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` rather than `npm install`, so a lockfile that has drifted from
+      # package.json fails here instead of resolving differently in production.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # The failure that put a blank page in production: Cloudflare serving the
+      # repo root. Assert the build really produced a bundled entry point.
+      - name: Check the build output is actually built
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          if grep -q "/src/main.tsx" dist/index.html; then
+            echo "::error::dist/index.html still points at /src/main.tsx — the build did not transform the entry point."
+            exit 1
+          fi
+          grep -qE '/assets/index-[A-Za-z0-9_-]+\.js' dist/index.html \
+            || { echo "::error::no hashed entry bundle referenced in dist/index.html"; exit 1; }
+          test -f dist/_redirects
+          test -f dist/_headers
+          echo "dist looks correct:"
+          ls -1 dist
+
+      - name: Refuse a secret key in the bundle
+        run: |
+          set -euo pipefail
+          if grep -rq "sb_secret_" dist/ 2>/dev/null; then
+            echo "::error::a Supabase secret key is present in the build output. Roll it immediately."
+            exit 1
+          fi
+          echo "no secret key in the build output"
+
+  database:
+    name: Migrations and RLS assertions
+    runs-on: ubuntu-latest
+
+    # Matches the hosted project's major version, so a behaviour difference
+    # shows up here rather than on the first push to production.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Postgres client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Apply every migration and run the assertions
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash scripts/test-db.sh

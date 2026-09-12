@@ -168,6 +168,68 @@ that creates the business and the owner record together in a single transaction.
 
 ---
 
+## Automatic deployment
+
+Push to `main` and everything follows: Cloudflare rebuilds the site, GitHub
+Actions applies any new migrations and redeploys the edge function, then checks
+that what actually went live is correct.
+
+### One-time setup
+
+Two repository secrets, at **Settings → Secrets and variables → Actions**.
+This is the only part that cannot be automated — automation needs credentials,
+and nothing else can create them on your behalf.
+
+| Secret | Where to get it |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens → Generate new token |
+| `SUPABASE_DB_PASSWORD` | The database password from when you created the project |
+
+Nothing else. In particular:
+
+- **No Cloudflare build settings.** `wrangler.toml` declares
+  `pages_build_output_dir = "dist"`, so the output directory is not a dashboard
+  field that can be left blank.
+- **No Cloudflare environment variables.** `.env.production` is committed with
+  the project URL and publishable key. Both ship in the browser bundle anyway,
+  and the publishable key carries no privileges of its own. Real environment
+  variables still take precedence, so the dashboard can still override them —
+  which is how you would point a preview branch at a different project.
+- **No manual `supabase db push`** or `functions deploy`.
+
+### What runs, and in what order
+
+`.github/workflows/ci.yml` — on **every** push and pull request:
+
+1. Typecheck, lint, build.
+2. Assert the build output is genuinely built — that `dist/index.html` points at
+   a hashed bundle rather than `/src/main.tsx`, and that `_redirects` and
+   `_headers` are present. This is the check that would have caught a blank
+   production page.
+3. Refuse a build containing a `sb_secret_` key.
+4. Apply all nine migrations to a throwaway Postgres 17 and run the 159
+   assertions.
+
+`.github/workflows/deploy.yml` — on push to **main** only:
+
+1. **gate** — the full assertion suite against a scratch database. Nothing
+   touches the production database until this passes. This is what makes
+   automatic migrations safe rather than reckless: a policy that leaks across
+   businesses, or a ledger that double-counts, fails here.
+2. **database** — `supabase db push` and `supabase functions deploy`, after
+   printing `migration list` so the run log records what changed.
+3. **verify** — polls the live site until the new bundle appears, then asserts
+   it is configured, carries no secret key, resolves deep links, and that the
+   `vehicles` table actually exists. A silent blank page becomes a red X with
+   the remedy in the error message.
+
+### Want a human in the loop before migrations?
+
+The `database` job runs in a GitHub Environment called `production`. Add a
+required reviewer to it (**Settings → Environments → production**) and every
+migration will then wait for your approval, while the code still deploys
+automatically.
+
 ## Deployment
 
 ### 1. Supabase
@@ -216,11 +278,9 @@ the repo. The app refuses to start if it finds one, and says so.
 - Set **Site URL** to your Cloudflare Pages URL once you have it, so confirmation
   and recovery links come back to the right place.
 
-### 1b. The create-staff function (optional)
+### 1b. The create-staff function
 
-Everything in the app works without this. Deploy it only if you want to create
-staff logins outright — setting their password yourself and handing it over —
-rather than inviting them by email.
+Deployed automatically by the Deploy workflow. To do it by hand:
 
 ```bash
 supabase functions deploy create-staff

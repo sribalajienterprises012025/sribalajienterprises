@@ -1,0 +1,13 @@
+# Cloudflare Pages build configuration.
+#
+# The reason this file exists: with the output directory set only in the
+# dashboard, leaving it blank makes Cloudflare serve the repository root instead
+# of the build. The deploy goes green and the site is a blank page whose HTML
+# still points at /src/main.tsx. Declaring it here makes that unconfigurable —
+# Cloudflare reads this file and the dashboard field no longer applies.
+#
+# `name` must match the Pages project, or Cloudflare will not associate the two.
+
+name = "sribalajienterprises"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"

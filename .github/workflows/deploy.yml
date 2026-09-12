@@ -1,0 +1,197 @@
+name: Deploy
+
+# Push to main and the database follows the code. Cloudflare Pages rebuilds the
+# site on its own through the Git integration, so this workflow owns the parts
+# Cloudflare cannot: applying migrations, deploying the edge function, and then
+# checking that what went live is actually correct.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_verify:
+        description: 'Skip the post-deploy checks (use only if Cloudflare is slow)'
+        type: boolean
+        default: false
+
+concurrency:
+  # Never let two migration runs overlap, and never cancel one part-way: a
+  # half-applied migration is worse than a queued one.
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: jaeynmolmvxtzllyqbyh
+  SITE_URL: https://sribalajienterprises.pages.dev
+
+jobs:
+  # Nothing reaches the production database until all 159 assertions pass
+  # against a throwaway copy of the same schema. This is the gate that makes
+  # automatic migrations safe rather than reckless.
+  gate:
+    name: Prove the migrations are safe
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the Postgres client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+      - name: Apply every migration and run the assertions
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash scripts/test-db.sh
+
+  database:
+    name: Apply migrations to production
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check the credentials are present
+        env:
+          ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          [ -n "$ACCESS_TOKEN" ] || { echo "::error::SUPABASE_ACCESS_TOKEN is not set in repository secrets."; missing=1; }
+          [ -n "$DB_PASSWORD" ]  || { echo "::error::SUPABASE_DB_PASSWORD is not set in repository secrets."; missing=1; }
+          if [ "$missing" = 1 ]; then
+            echo "::error::Add them at Settings -> Secrets and variables -> Actions. See README, 'Automatic deployment'."
+            exit 1
+          fi
+
+      - name: Link the project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # Printed before anything is applied, so the run log shows what changed
+      # even if the push itself later fails.
+      - name: Show what is about to change
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase migration list --linked || true
+
+      - name: Push migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push --include-all
+
+      - name: Deploy the create-staff function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy create-staff --project-ref "$SUPABASE_PROJECT_REF"
+
+  verify:
+    name: Check what actually went live
+    needs: database
+    if: ${{ !inputs.skip_verify }}
+    runs-on: ubuntu-latest
+    steps:
+      # Needed by the schema check below, which falls back to the publishable
+      # key committed in .env.production.
+      - uses: actions/checkout@v4
+
+      - name: Wait for Cloudflare to publish the new build
+        run: |
+          set -euo pipefail
+          # Cloudflare builds in parallel with this workflow, so give it room.
+          for attempt in $(seq 1 30); do
+            html=$(curl -fsS "$SITE_URL" --max-time 20 || true)
+            if printf '%s' "$html" | grep -qE '/assets/index-[A-Za-z0-9_-]+\.js'; then
+              echo "built bundle is live (attempt $attempt)"
+              exit 0
+            fi
+            if printf '%s' "$html" | grep -q '/src/main.tsx'; then
+              echo "attempt $attempt: still serving the unbuilt entry point"
+            else
+              echo "attempt $attempt: no bundle reference yet"
+            fi
+            sleep 20
+          done
+          echo "::error::After 10 minutes the site is still not serving a built bundle."
+          echo "::error::If the HTML references /src/main.tsx, the Pages output directory is wrong — wrangler.toml sets it to dist, so check the Pages project picked this file up."
+          exit 1
+
+      - name: The site must be configured, and must not carry a secret key
+        run: |
+          set -euo pipefail
+          html=$(curl -fsS "$SITE_URL" --max-time 20)
+          chunk=$(printf '%s' "$html" | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -1)
+          bundle=$(curl -fsS "$SITE_URL$chunk" --max-time 40)
+
+          printf '%s' "$bundle" | grep -q "$SUPABASE_PROJECT_REF" \
+            || { echo "::error::the live bundle has no Supabase URL — it will show the setup screen"; exit 1; }
+          printf '%s' "$bundle" | grep -qE 'sb_publishable_|eyJhbGciOi' \
+            || { echo "::error::the live bundle has no browser key"; exit 1; }
+          if printf '%s' "$bundle" | grep -q 'sb_secret_'; then
+            echo "::error::a Supabase SECRET key is live in the browser bundle. Roll it now."
+            exit 1
+          fi
+          echo "live bundle is configured, and carries no secret key"
+
+      - name: Deep links must resolve
+        run: |
+          set -euo pipefail
+          for path in / /trips /invoices /reports; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL$path" --max-time 20)
+            echo "  $path -> $code"
+            [ "$code" = "200" ] || { echo "::error::$path returned $code; the _redirects rule is not applying"; exit 1; }
+          done
+
+      - name: The schema must be present
+        env:
+          KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          # Falls back to the committed build default when the variable is unset,
+          # since the publishable key is not a secret either way.
+          key="${KEY:-$(grep -oP 'VITE_SUPABASE_PUBLISHABLE_KEY=\K.*' .env.production 2>/dev/null || true)}"
+          if [ -z "$key" ]; then
+            echo "::notice::no publishable key available to this job; skipping the schema check"
+            exit 0
+          fi
+          # No -f here on purpose: the interesting answer is a 404 body that
+          # names PGRST205, and -f would discard it and leave this check
+          # passing on an empty string.
+          response=$(curl -sS -w '\n%{http_code}' \
+            "https://$SUPABASE_PROJECT_REF.supabase.co/rest/v1/vehicles?select=id&limit=1" \
+            -H "apikey: $key" --max-time 25)
+          status=$(printf '%s' "$response" | tail -n1)
+          body=$(printf '%s' "$response" | sed '$d')
+          echo "  HTTP $status"
+
+          if printf '%s' "$body" | grep -q 'PGRST205'; then
+            echo "::error::the vehicles table is missing — migrations did not reach this project"
+            exit 1
+          fi
+          if [ "$status" != "200" ]; then
+            echo "::error::unexpected reply from the REST API (HTTP $status): $body"
+            exit 1
+          fi
+          echo "schema is present"

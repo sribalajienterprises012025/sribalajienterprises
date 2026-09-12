@@ -10,7 +10,10 @@ dist-ssr
 build
 *.local
 
-# environment — never commit real keys
+# environment
+# .env.production IS committed: it holds only the project URL and publishable
+# key, both of which ship in the browser bundle anyway. Anything secret belongs
+# in .env.local (never committed) or in the deploy platform.
 .env
 .env.local
 .env.*.local
