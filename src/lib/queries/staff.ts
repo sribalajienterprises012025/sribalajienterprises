@@ -113,3 +113,92 @@ export async function listAudit(
   if (error) throw error
   return data ?? []
 }
+
+/** Shape returned by the create-staff function on success. */
+export interface CreatedStaff {
+  id: string
+  email: string
+  name: string
+  role: Exclude<Role, 'owner'>
+}
+
+export interface CreateStaffError {
+  code: string
+  message: string
+}
+
+/**
+ * Creates a login for a helper or a CA outright, rather than inviting them.
+ *
+ * Runs in the `create-staff` Edge Function because creating someone else's
+ * auth account needs the secret key, which must never reach a browser. The
+ * function checks the caller is an owner and writes the profile row as the
+ * caller, so RLS still applies.
+ *
+ * Use this when handing over credentials in person; use `createInvite` when the
+ * person has their own mailbox and should set their own password.
+ */
+export async function createStaffLogin(input: {
+  email: string
+  password: string
+  name: string
+  role: Exclude<Role, 'owner'>
+}): Promise<CreatedStaff> {
+  const { data, error } = await supabase.functions.invoke('create-staff', {
+    body: input,
+  })
+
+  if (error) {
+    throw new Error(await describeFunctionError(error))
+  }
+
+  if (data?.error) throw new Error(data.error.message ?? 'Could not create the login.')
+  return data.user as CreatedStaff
+}
+
+const NOT_DEPLOYED =
+  'Creating logins needs the create-staff function, which is not deployed yet. ' +
+  'Run `supabase functions deploy create-staff`, or invite by email instead.'
+
+/**
+ * Turns a function failure into something the owner can act on.
+ *
+ * supabase-js reports every non-2xx as "Edge Function returned a non-2xx status
+ * code", so the useful information is in the response, not the message. The
+ * status is read first — a 404 means not deployed, which is the common case and
+ * not a breakage, since the app works fully without it — and then the body,
+ * which carries the function's own error envelope.
+ */
+async function describeFunctionError(error: unknown): Promise<string> {
+  const context = (error as { context?: Response }).context
+  const message = (error as { message?: string })?.message ?? ''
+
+  if (context?.status === 404) return NOT_DEPLOYED
+
+  let detail: CreateStaffError | null = null
+  if (context && typeof context.json === 'function') {
+    try {
+      const payload = await context.json()
+      detail = payload?.error ?? null
+    } catch {
+      detail = null
+    }
+  }
+
+  if (detail?.code === 'not_configured') {
+    return (
+      'The create-staff function is deployed but cannot see its Supabase ' +
+      'credentials. Redeploy it, or invite by email instead.'
+    )
+  }
+  if (detail?.message) return detail.message
+
+  // A body that parsed but held no envelope of ours is not our function
+  // answering — most likely the route does not exist on this project.
+  if (context && context.status >= 400 && context.status < 500) return NOT_DEPLOYED
+
+  if (/failed to (fetch|send)/i.test(message)) {
+    return 'Could not reach the function. Check your connection and try again.'
+  }
+  return message || 'Could not create the login.'
+}

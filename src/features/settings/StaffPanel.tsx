@@ -21,6 +21,7 @@ import {
   updateStaffRole,
 } from '@/lib/queries/staff'
 import type { AppUser, Invite, Role } from '@/types'
+import { CreateLoginPanel } from './CreateLoginPanel'
 
 const ROLE_NOTES: Record<Role, string> = {
   owner: 'Everything, including settings, reports and staff.',
@@ -29,12 +30,19 @@ const ROLE_NOTES: Record<Role, string> = {
 }
 
 /**
- * Staff management.
+ * Staff management: who has access, at what role, and how to add someone.
  *
- * The browser holds only the anon key, so it cannot create someone else's auth
- * account — that needs the admin API. Instead an invitation is recorded against
- * an email address and the invitee signs up and claims it themselves, which
- * also proves they control that address.
+ * Two ways in, because the right one depends on the person. An **invitation**
+ * is recorded against an email address and claimed by the invitee when they
+ * sign up, which proves they control that address and means no password ever
+ * passes through the owner. **Creating a login** sets up the account and
+ * password outright, for staff who will be handed their details in person and
+ * may not have a mailbox they check.
+ *
+ * Creating an account needs the admin API, and therefore the secret key, which
+ * must never reach a browser — so that path runs in the `create-staff` Edge
+ * Function. The app works fully without that function deployed; the create tab
+ * then explains how to deploy it and points back at invitations.
  */
 export function StaffPanel() {
   const businessId = useBusinessId()
@@ -48,6 +56,7 @@ export function StaffPanel() {
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<AppUser | null>(null)
   const [revoking, setRevoking] = useState<Invite | null>(null)
+  const [addMode, setAddMode] = useState<'invite' | 'create'>('invite')
 
   const staffQuery = useQuery({
     queryKey: queryKeys.staff(businessId),
@@ -196,11 +205,15 @@ export function StaffPanel() {
           <CardHeader title="Pending invitations" />
           <div className="divide-y divide-slate-100">
             {pending.map((invite) => (
-              <div key={invite.id} className="flex items-start justify-between gap-3 p-4">
+              <div
+                key={invite.id}
+                className="flex items-start justify-between gap-3 p-4"
+              >
                 <div className="min-w-0">
                   <p className="truncate font-medium text-slate-900">{invite.email}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Invited as {humanize(invite.role)} on {formatDate(invite.created_at)}
+                    Invited as {humanize(invite.role)} on{' '}
+                    {formatDate(invite.created_at)}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setRevoking(invite)}>
@@ -218,59 +231,96 @@ export function StaffPanel() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader title="Invite someone" />
-        <CardBody className="space-y-4">
-          <Field label="Email" htmlFor="invite_email" required>
-            <input
-              id="invite_email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={controlClass()}
-              placeholder="them@example.com"
-            />
-          </Field>
+      {/* Two ways to add someone, and the right one depends on whether they have
+          a mailbox they actually check. Presented as a choice rather than two
+          stacked forms, so it is clear only one applies. */}
+      <div className="inline-flex rounded-lg bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setAddMode('invite')}
+          className={[
+            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            addMode === 'invite'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500',
+          ].join(' ')}
+        >
+          Invite by email
+        </button>
+        <button
+          type="button"
+          onClick={() => setAddMode('create')}
+          className={[
+            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            addMode === 'create'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500',
+          ].join(' ')}
+        >
+          Create a login
+        </button>
+      </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Name" htmlFor="invite_name">
+      {addMode === 'create' && <CreateLoginPanel />}
+
+      {addMode === 'invite' && (
+        <Card>
+          <CardHeader title="Invite someone" />
+          <CardBody className="space-y-4">
+            <Field label="Email" htmlFor="invite_email" required>
               <input
-                id="invite_name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
+                id="invite_email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
                 className={controlClass()}
+                placeholder="them@example.com"
               />
             </Field>
 
-            <Field label="Role" htmlFor="invite_role" hint={ROLE_NOTES[role]}>
-              <select
-                id="invite_role"
-                value={role}
-                onChange={(event) =>
-                  setRole(event.target.value as Exclude<Role, 'owner'>)
-                }
-                className={controlClass()}
-              >
-                <option value="helper">Helper</option>
-                <option value="ca">CA</option>
-              </select>
-            </Field>
-          </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Name" htmlFor="invite_name">
+                <input
+                  id="invite_name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className={controlClass()}
+                />
+              </Field>
 
-          {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-          )}
+              <Field label="Role" htmlFor="invite_role" hint={ROLE_NOTES[role]}>
+                <select
+                  id="invite_role"
+                  value={role}
+                  onChange={(event) =>
+                    setRole(event.target.value as Exclude<Role, 'owner'>)
+                  }
+                  className={controlClass()}
+                >
+                  <option value="helper">Helper</option>
+                  <option value="ca">CA</option>
+                </select>
+              </Field>
+            </div>
 
-          <Button loading={inviteMutation.isPending} onClick={submitInvite}>
-            Create invitation
-          </Button>
+            {error && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
 
-          <p className="text-xs text-slate-400">
-            An owner cannot be invited by email — promote an existing member above
-            instead, so adding a second owner is always a deliberate act.
-          </p>
-        </CardBody>
-      </Card>
+            <Button loading={inviteMutation.isPending} onClick={submitInvite}>
+              Create invitation
+            </Button>
+
+            <p className="text-xs text-slate-400">
+              They set their own password, so it never passes through anyone else. An
+              owner cannot be invited by email — promote an existing member above
+              instead, so adding a second owner is always a deliberate act.
+            </p>
+          </CardBody>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={Boolean(removing)}

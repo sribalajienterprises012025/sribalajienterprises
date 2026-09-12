@@ -216,6 +216,31 @@ the repo. The app refuses to start if it finds one, and says so.
 - Set **Site URL** to your Cloudflare Pages URL once you have it, so confirmation
   and recovery links come back to the right place.
 
+### 1b. The create-staff function (optional)
+
+Everything in the app works without this. Deploy it only if you want to create
+staff logins outright — setting their password yourself and handing it over —
+rather than inviting them by email.
+
+```bash
+supabase functions deploy create-staff
+```
+
+It needs no secrets set by hand: Supabase injects the project URL and secret key
+into the function's own environment. That is the whole point of it being a
+function — creating another person's auth account needs the secret key, which
+bypasses every RLS policy and must never reach a browser.
+
+The function uses two clients deliberately. The secret key does exactly one
+thing: create (and, if the follow-up fails, remove) the auth account. Every
+database read and write goes through the **caller's** JWT, so RLS still applies
+— `business_id` is read from the caller's own profile rather than taken from the
+request, the `users_insert` policy independently requires an owner, and the audit
+trail records the owner who acted instead of "System".
+
+Without it deployed, **Settings → Staff → Create a login** explains the one
+command and points back at invitations.
+
 ### 2. Cloudflare Pages
 
 Connect the repository, then:
@@ -223,12 +248,18 @@ Connect the repository, then:
 | Setting | Value |
 |---|---|
 | Build command | `npm run build` |
-| Output directory | `dist` |
+| Output directory | `dist` — **not blank, and not `/`** |
 | Environment variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 
 Node is pinned to 20 by `.nvmrc`; no `NODE_VERSION` variable is needed. The build
 fetches SheetJS from `cdn.sheetjs.com` (see the note under **Notes on exports**),
 which Cloudflare's build network allows.
+
+If the output directory is left blank, Cloudflare serves the **repository root**
+instead of the build. The symptom is a blank page whose HTML still references
+`/src/main.tsx` — the unbuilt entry point, which a browser cannot execute — and
+`/package.json` returning real content. Setting it to `dist` and redeploying is
+the whole fix.
 
 `public/_redirects` routes every path to `index.html` so deep links work before
 the service worker is installed, and `public/_headers` caches hashed assets for a
@@ -289,6 +320,8 @@ src/
 
 supabase/migrations/ schema, RLS, storage, invoicing, ledgers, distribution,
                      report views, asset care, staff invites, audit triggers
+supabase/functions/  create-staff: owner-only staff login creation
+supabase/config.toml committed, so no `supabase init` step
 supabase/test/       shim, seed and assertions for npm run db:test
 scripts/             PWA icon generator
 docs/                architecture

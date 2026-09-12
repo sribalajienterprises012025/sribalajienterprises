@@ -58,3 +58,8 @@ double_confirm_changes = true
 
 [analytics]
 enabled = false
+
+[functions.create-staff]
+# verify_jwt stays on: the platform rejects a request without a valid user JWT
+# before the function runs, and the function then checks the caller is an owner.
+verify_jwt = true
