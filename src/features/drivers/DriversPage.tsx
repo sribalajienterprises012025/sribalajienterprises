@@ -20,6 +20,7 @@ import {
 import { listVehicles } from '@/lib/queries/vehicles'
 import type { Driver } from '@/types'
 import { DriverForm } from './DriverForm'
+import { DriverMoneySheet } from './DriverMoneySheet'
 
 export function DriversPage() {
   const businessId = useBusinessId()
@@ -30,6 +31,7 @@ export function DriversPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Driver | null>(null)
   const [deleting, setDeleting] = useState<Driver | null>(null)
+  const [moneyFor, setMoneyFor] = useState<Driver | null>(null)
 
   const driversQuery = useQuery({
     queryKey: queryKeys.drivers(businessId),
@@ -157,23 +159,28 @@ export function DriversPage() {
                   <ExpiryPill days={daysUntil(driver.license_expiry)} label="Licence" />
                 </div>
 
-                {isOwner && (
-                  <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setEditing(driver)
-                        setFormOpen(true)
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setDeleting(driver)}>
-                      Remove
-                    </Button>
-                  </div>
-                )}
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                  <Button variant="secondary" size="sm" onClick={() => setMoneyFor(driver)}>
+                    Advances &amp; salary
+                  </Button>
+                  {isOwner && (
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(driver)
+                          setFormOpen(true)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setDeleting(driver)}>
+                        Remove
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -190,6 +197,10 @@ export function DriversPage() {
           onClose={closeForm}
           onSubmit={(values) => saveMutation.mutate(values)}
         />
+      )}
+
+      {moneyFor && (
+        <DriverMoneySheet driver={moneyFor} onClose={() => setMoneyFor(null)} />
       )}
 
       <ConfirmDialog

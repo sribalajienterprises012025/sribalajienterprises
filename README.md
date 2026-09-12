@@ -19,7 +19,7 @@ go into daily use now and grow from there.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Vehicle, driver, client and broker masters · trip entry · expense logging · dashboard | ✅ Done |
-| 2 | Invoicing (GST / non-GST) · ledgers · credit & debit notes | Planned |
+| 2 | Invoicing (GST / non-GST) · ledgers · credit & debit notes · receipts · driver advances and salary | ✅ Done |
 | 3 | Distribution planning · multi-stop and multi-vehicle | Planned |
 | 4 | Reports · CA export pack · PDF and Excel export | Planned |
 | 5 | Asset care (service-by-km, tyres, claims) · helper & CA roles in-app · audit trail | Planned |
@@ -41,8 +41,26 @@ are enforced in the database today, ahead of the Phase 5 UI for managing staff.
   salary terms, clients with credit terms, brokers with commission terms.
 - **Settings** — business details and financial-year start used by invoices and reports.
 - **Installable** — add to a phone home screen; the app shell is cached so it opens
-  instantly. Offline write-queueing is a Phase 2 item; Phase 1 needs a connection to
+  instantly. Offline write-queueing is still to come; the app needs a connection to
   save.
+
+### What Phase 2 adds
+
+- **Invoices** — GST and non-GST, numbered per financial year (`GST/2025-26/0001`)
+  by Postgres rather than by counting rows, so two people billing at once cannot
+  collide or leave a gap in the series. CGST+SGST or IGST is decided from the place
+  of supply against your own GSTIN; reverse charge is supported. Billing a trip
+  pre-fills the party, freight and agreed bill type.
+- **Credit and debit notes** — short delivery, rate corrections, detention. The
+  original invoice is never edited, which is what GST requires.
+- **Receipts and payouts** — record part-payments from clients and commission
+  payouts to brokers, with a reference you can match against the bank statement.
+- **Ledgers** — client receivable, broker (both directions, netted), and driver
+  payable. Computed live as Postgres views, so a balance can never drift from the
+  trips, invoices, notes and receipts behind it. Each client row expands into the
+  full derivation.
+- **Driver advances and salary runs** — recovering an advance through a salary run
+  marks it recovered, so the same rupee is never chased twice.
 
 ---
 
@@ -83,6 +101,7 @@ that creates the business and the owner record together in a single transaction.
 | `npm run typecheck` | TypeScript only, no build |
 | `npm run lint` | ESLint |
 | `npm run icons` | Regenerate the PWA icons in `public/icons/` |
+| `npm run db:test` | Apply every migration to a throwaway Postgres and run the assertion suite |
 
 ---
 
@@ -110,6 +129,31 @@ try a change before it reaches the live app.
 
 ---
 
+## Testing the database
+
+`npm run db:test` applies every migration to a scratch database and runs ~50
+assertions against it: that business A cannot see or write business B's rows, that a
+helper can log a trip but not add a vehicle, that a CA cannot write at all, that the
+ledger arithmetic comes out right, that invoice numbering is per-business and
+per-year, and that the storage policies enforce the tenant folder.
+
+It needs a local Postgres 15+ reachable over TCP:
+
+```bash
+initdb -D /tmp/pgdata -U postgres --auth=trust
+pg_ctl -D /tmp/pgdata -o "-p 55432" start
+npm run db:test
+```
+
+`supabase/test/00_shim.sql` recreates the parts of a Supabase project the migrations
+depend on — the `auth` and `storage` schemas, the `anon`/`authenticated` roles, the
+default grants. It is never applied to the real project.
+
+One thing the suite encodes that is easy to get wrong: under RLS a failed `INSERT`
+raises, but an `UPDATE` or `DELETE` the `USING` clause excludes simply matches zero
+rows and returns successfully. Asserting "it threw" would pass for the wrong reason,
+so those cases read the value back and assert it is untouched.
+
 ## Project layout
 
 ```
@@ -120,6 +164,8 @@ src/
     dashboard/
     trips/           trip list, entry form, trip maths
     accounts/
+      invoices/       invoice form with GST computation, credit/debit notes
+      ledgers/        client, broker and driver ledgers, receipts
       expenses/
     vehicles/
     drivers/
@@ -129,11 +175,13 @@ src/
   lib/
     supabase.ts      the only API layer
     format.ts        ₹ / date / km formatting for en-IN
+    gst.ts           CGST/SGST vs IGST, rates, state codes
     queries/         one typed module per table
   hooks/             auth, master data, toasts
   types/             database types, mirroring the migrations
 
-supabase/migrations/ schema, RLS policies, storage bucket
+supabase/migrations/ schema, RLS policies, storage, invoicing, ledger views
+supabase/test/       shim, seed and assertions for npm run db:test
 scripts/             PWA icon generator
 docs/                architecture
 ```
@@ -152,9 +200,18 @@ Enforced by RLS, so they hold even if someone bypasses the UI entirely.
 
 - Every business-owned table carries `business_id`. That column is what RLS filters
   on, and what lets a second entity be added later without a redesign.
-- Ledgers (client dues, broker payable, driver payable) are computed from trips,
-  invoices, expenses, advances and opening balances rather than stored — the numbers
-  cannot drift from the entries behind them. They arrive as views in Phase 2.
+- Ledgers (client dues, broker payable, driver payable) are Postgres views, not
+  tables — the numbers cannot drift from the entries behind them. A trip contributes
+  either its invoice total or, while unbilled, its raw freight, never both. Cancelled
+  invoices drop out, and the raw freight comes back.
+- Every view is declared `security_invoker = on`. Without it a view runs with its
+  owner's rights and would hand a helper or CA rows from another business straight
+  past RLS.
+- A `payments` table was added beyond the original architecture document, because
+  `invoices.status = 'part_paid'` cannot be determined without a record of what has
+  actually been received. Drivers are deliberately excluded from it — their money
+  lives in `driver_advances` and `driver_salary_payments`, and a second home for it
+  would double-count in the driver ledger.
 - `trips.drop_location` is named that way because `DROP` is a reserved word in SQL.
 - `party_id` on `trips` and `quotations` points at either a client or a broker, so it
   carries no foreign key; party names are resolved in the app from one merged lookup.

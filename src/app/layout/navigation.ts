@@ -10,14 +10,12 @@ export interface NavItem {
   primary?: boolean
 }
 
-/**
- * Phase 1 navigation. Distribution, invoices, ledgers and reports join this
- * list in Phases 2–4; the shell already handles a longer list.
- */
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: '📊', primary: true },
   { to: '/trips', label: 'Trips', icon: '🚚', primary: true },
-  { to: '/expenses', label: 'Expenses', icon: '💰', primary: true },
+  { to: '/invoices', label: 'Invoices', icon: '🧾', primary: true },
+  { to: '/expenses', label: 'Expenses', icon: '💰' },
+  { to: '/ledgers', label: 'Ledgers', icon: '📒' },
   { to: '/vehicles', label: 'Vehicles', icon: '🚛' },
   { to: '/drivers', label: 'Drivers', icon: '👤' },
   { to: '/parties', label: 'Parties', icon: '🤝' },

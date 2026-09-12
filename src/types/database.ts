@@ -175,3 +175,184 @@ export interface TripWithRelations extends Trip {
 export interface ExpenseWithRelations extends Expense {
   vehicle: Pick<Vehicle, 'id' | 'reg_no'> | null
 }
+
+// =============================================================================
+// Phase 2 — invoicing, payments and ledgers
+// =============================================================================
+
+export type PaymentDirection = 'in' | 'out'
+export type PaymentMethod = 'cash' | 'upi' | 'bank' | 'cheque' | 'card' | 'adjustment'
+export type NoteType = 'credit' | 'debit'
+
+/** GST rates that apply to goods transport. 5% is the common GTA rate. */
+export type GstRate = 0 | 5 | 12 | 18
+
+export interface Payment extends Timestamps {
+  id: string
+  business_id: string
+  party_type: PartyType
+  party_id: string
+  direction: PaymentDirection
+  date: string
+  amount: number
+  mode: PaymentMethod
+  reference: string | null
+  invoice_id: string | null
+  trip_id: string | null
+  note: string | null
+}
+
+export interface CreditDebitNote extends Timestamps {
+  id: string
+  business_id: string
+  invoice_id: string
+  party_type: PartyType | null
+  party_id: string | null
+  type: NoteType
+  amount: number
+  reason: string | null
+  date: string
+}
+
+/** The jsonb stored on invoices.tax_breakup. */
+export interface TaxBreakup {
+  taxable_value: number
+  cgst_rate?: number
+  cgst_amount?: number
+  sgst_rate?: number
+  sgst_amount?: number
+  igst_rate?: number
+  igst_amount?: number
+  total_tax: number
+  rcm: boolean
+}
+
+export interface FullInvoice extends Timestamps {
+  id: string
+  business_id: string
+  trip_id: string | null
+  party_type: PartyType | null
+  party_id: string | null
+  invoice_type: BillType
+  invoice_number: string
+  invoice_date: string
+  due_date: string | null
+  amount: number
+  taxable_value: number
+  tax_amount: number
+  gst_rate: number
+  is_rcm: boolean
+  place_of_supply: string | null
+  tax_breakup: TaxBreakup | Record<string, never>
+  status: InvoiceStatus
+  notes: string | null
+}
+
+export interface InvoiceWithRelations extends FullInvoice {
+  trip: Pick<Trip, 'id' | 'pickup' | 'drop_location' | 'trip_date' | 'lr_number'> | null
+}
+
+export interface DriverAdvance extends Timestamps {
+  id: string
+  business_id: string
+  driver_id: string
+  date: string
+  amount: number
+  reason: string | null
+  adjusted: boolean
+}
+
+export interface DriverSalaryPayment extends Timestamps {
+  id: string
+  business_id: string
+  driver_id: string
+  period_month: string
+  salary_earned: number
+  advances_deducted: number
+  other_deductions: number
+  net_payable: number
+  amount_paid: number
+  paid_date: string | null
+}
+
+// --- ledger views (read-only) ------------------------------------------------
+
+export interface ClientLedgerRow {
+  business_id: string
+  client_id: string
+  client_name: string
+  credit_limit: number | null
+  credit_period_days: number | null
+  opening_balance: number
+  invoiced: number
+  unbilled_freight: number
+  debit_notes: number
+  credit_notes: number
+  advances_received: number
+  tds_deducted: number
+  receipts: number
+  trip_count: number
+  invoice_count: number
+  /** Positive means the client owes the business. */
+  balance: number
+}
+
+export interface BrokerLedgerRow {
+  business_id: string
+  broker_id: string
+  broker_name: string
+  commission_type: CommissionType
+  commission_rate: number | null
+  opening_balance: number
+  invoiced: number
+  unbilled_freight: number
+  advances_received: number
+  tds_deducted: number
+  receipts: number
+  debit_notes: number
+  credit_notes: number
+  trip_count: number
+  freight_receivable: number
+  commission_earned: number
+  commission_paid: number
+  commission_payable: number
+  /** Positive means the broker owes the business. */
+  net_balance: number
+}
+
+export interface DriverLedgerRow {
+  business_id: string
+  driver_id: string
+  driver_name: string
+  salary_type: SalaryType
+  fixed_salary_amount: number | null
+  opening_balance: number
+  advances_outstanding: number
+  advances_total: number
+  salary_earned: number
+  salary_paid: number
+  salary_due: number
+  trip_count: number
+  /** Positive means the business owes the driver. */
+  net_payable: number
+}
+
+export interface TripFinancialsRow {
+  trip_id: string
+  business_id: string
+  vehicle_id: string | null
+  driver_id: string | null
+  party_type: PartyType
+  party_id: string
+  trip_date: string
+  status: TripStatus
+  bill_type: BillType
+  freight_amount: number
+  broker_commission: number
+  advance_received: number
+  tds_deducted: number
+  trip_expenses: number
+  distance_km: number | null
+  net_margin: number
+  balance_due: number
+}

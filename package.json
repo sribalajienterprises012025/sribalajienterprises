@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "db:test": "bash scripts/test-db.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

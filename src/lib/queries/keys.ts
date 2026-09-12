@@ -30,4 +30,24 @@ export const queryKeys = {
   expense: (id: string) => ['expense', id] as const,
 
   dashboard: (businessId: string) => ['dashboard', businessId] as const,
+
+  invoices: (businessId: string, filters?: unknown) =>
+    ['invoices', businessId, filters ?? null] as const,
+  invoice: (id: string) => ['invoice', id] as const,
+  billableTrips: (businessId: string) => ['billable-trips', businessId] as const,
+  notes: (businessId: string, invoiceId?: string) =>
+    ['notes', businessId, invoiceId ?? null] as const,
+
+  clientLedger: (businessId: string) => ['client-ledger', businessId] as const,
+  brokerLedger: (businessId: string) => ['broker-ledger', businessId] as const,
+  driverLedger: (businessId: string) => ['driver-ledger', businessId] as const,
+  tripFinancials: (businessId: string, filters?: unknown) =>
+    ['trip-financials', businessId, filters ?? null] as const,
+
+  payments: (businessId: string, filters?: unknown) =>
+    ['payments', businessId, filters ?? null] as const,
+  advances: (businessId: string, driverId?: string) =>
+    ['advances', businessId, driverId ?? null] as const,
+  salaryPayments: (businessId: string, driverId?: string) =>
+    ['salary-payments', businessId, driverId ?? null] as const,
 } as const
