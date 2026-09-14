@@ -579,8 +579,72 @@ export function buildSeed(): Tables {
       },
     ],
 
-    audit_log: [],
+    audit_log: auditLog(),
   }
+}
+
+/**
+ * A few entries already in the log, so the Activity screen opens on something
+ * rather than on an empty state the real app would never show. In production
+ * these are written by database triggers; the demo backend appends to the same
+ * table on every write, in the same shape.
+ */
+function auditLog(): Row[] {
+  const HELPER = 'u0000000-0000-4000-8000-000000000002'
+  const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000).toISOString()
+
+  return [
+    {
+      id: 'z0000000-0000-4000-8000-000000000001',
+      business_id: BUSINESS_ID,
+      user_id: HELPER,
+      table_name: 'trips',
+      record_id: 't0000000-0000-4000-8000-000000000001',
+      action: 'insert',
+      changed_at: hoursAgo(30),
+      diff: { pickup: 'Mattapalli', drop_location: 'Nagpur', freight_amount: 54_000 },
+    },
+    {
+      id: 'z0000000-0000-4000-8000-000000000002',
+      business_id: BUSINESS_ID,
+      user_id: OWNER_ID,
+      table_name: 'invoices',
+      record_id: 'i0000000-0000-4000-8000-000000000002',
+      action: 'insert',
+      changed_at: hoursAgo(26),
+      diff: { invoice_number: 'GST/2026-27/0002', total: 46_200 },
+    },
+    {
+      id: 'z0000000-0000-4000-8000-000000000003',
+      business_id: BUSINESS_ID,
+      user_id: HELPER,
+      table_name: 'expenses',
+      record_id: 'e0000000-0000-4000-8000-000000000003',
+      action: 'update',
+      changed_at: hoursAgo(20),
+      diff: { amount: { from: 8_400, to: 9_150 } },
+    },
+    {
+      id: 'z0000000-0000-4000-8000-000000000004',
+      business_id: BUSINESS_ID,
+      user_id: OWNER_ID,
+      table_name: 'payments',
+      record_id: 'p0000000-0000-4000-8000-000000000001',
+      action: 'insert',
+      changed_at: hoursAgo(9),
+      diff: { amount: 40_000, mode: 'bank' },
+    },
+    {
+      id: 'z0000000-0000-4000-8000-000000000005',
+      business_id: BUSINESS_ID,
+      user_id: OWNER_ID,
+      table_name: 'trips',
+      record_id: 't0000000-0000-4000-8000-000000000004',
+      action: 'update',
+      changed_at: hoursAgo(4),
+      diff: { status: { from: 'delivered', to: 'payment_pending' } },
+    },
+  ]
 }
 
 function trips(): Row[] {

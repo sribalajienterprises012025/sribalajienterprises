@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth, useRole } from '@/hooks/useAuth'
-import { humanize } from '@/lib/format'
+import { roleLabel } from '@/lib/roles'
 import { visibleNavItems } from './navigation'
 
 export function Sidebar() {
@@ -50,7 +50,7 @@ export function Sidebar() {
           <p className="truncate text-sm font-medium text-slate-900">
             {profile?.name ?? 'Signed in'}
           </p>
-          <p className="text-xs text-slate-500">{humanize(profile?.role)}</p>
+          <p className="text-xs text-slate-500">{roleLabel(profile?.role)}</p>
         </div>
         <button
           type="button"

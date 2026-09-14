@@ -10,12 +10,46 @@ import { queryKeys } from '@/lib/queries/keys'
 import { listAudit } from '@/lib/queries/staff'
 import type { AuditAction, AuditEntry } from '@/types'
 
-const TABLES = [
-  'all', 'trips', 'invoices', 'expenses', 'payments', 'credit_debit_notes',
-  'vehicles', 'drivers', 'clients', 'brokers', 'driver_advances',
-  'driver_salary_payments', 'consignments', 'service_schedules',
-  'vehicle_maintenance_log', 'insurance_claims', 'users', 'invites', 'businesses',
-]
+/**
+ * What each audited table is called on screen.
+ *
+ * The table name cannot be shown directly: a row is one record, so "Created
+ * payments" is wrong, and `credit_debit_notes` and `vehicle_maintenance_log`
+ * are not phrases anyone says. One name for a single record, one for the
+ * filter, which is naming a category.
+ *
+ * Every table with an audit trigger in 20250101000800_staff_and_audit.sql
+ * appears here, so nothing recorded can turn up on screen unnamed.
+ */
+const RECORD_LABELS: Record<string, { one: string; many: string }> = {
+  trips: { one: 'Trip', many: 'Trips' },
+  invoices: { one: 'Invoice', many: 'Invoices' },
+  expenses: { one: 'Expense', many: 'Expenses' },
+  payments: { one: 'Payment', many: 'Payments' },
+  credit_debit_notes: { one: 'Credit / debit note', many: 'Credit & debit notes' },
+  vehicles: { one: 'Vehicle', many: 'Vehicles' },
+  drivers: { one: 'Driver', many: 'Drivers' },
+  clients: { one: 'Client', many: 'Clients' },
+  brokers: { one: 'Broker', many: 'Brokers' },
+  driver_advances: { one: 'Driver advance', many: 'Driver advances' },
+  driver_salary_payments: { one: 'Salary payment', many: 'Salary payments' },
+  consignments: { one: 'Consignment', many: 'Consignments' },
+  service_schedules: { one: 'Service schedule', many: 'Service schedules' },
+  vehicle_maintenance_log: { one: 'Workshop entry', many: 'Workshop history' },
+  insurance_claims: { one: 'Insurance claim', many: 'Insurance claims' },
+  opening_balances: { one: 'Opening balance', many: 'Opening balances' },
+  quotations: { one: 'Quotation', many: 'Quotations' },
+  users: { one: 'Staff member', many: 'Staff' },
+  invites: { one: 'Invitation', many: 'Invitations' },
+  businesses: { one: 'Business details', many: 'Business details' },
+}
+
+const TABLES = ['all', ...Object.keys(RECORD_LABELS)]
+
+/** Falls back to the raw name, so an unmapped table is still readable. */
+function recordLabel(table: string, form: 'one' | 'many'): string {
+  return RECORD_LABELS[table]?.[form] ?? humanize(table)
+}
 
 const ACTION_TONES: Record<AuditAction, 'success' | 'info' | 'danger'> = {
   insert: 'success',
@@ -51,7 +85,7 @@ export function ActivityPanel() {
         >
           {TABLES.map((table) => (
             <option key={table} value={table}>
-              {table === 'all' ? 'Everything' : humanize(table)}
+              {table === 'all' ? 'Everything' : recordLabel(table, 'many')}
             </option>
           ))}
         </select>
@@ -94,7 +128,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
       >
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900">
-            {ACTION_LABELS[entry.action]} {humanize(entry.table_name).toLowerCase()}
+            {recordLabel(entry.table_name, 'one')}
           </p>
           {/* Wraps rather than truncates: on a 390px screen a long name would
               otherwise clip the timestamp, which is the part being looked for. */}

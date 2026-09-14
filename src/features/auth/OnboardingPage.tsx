@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { LoadingState } from '@/components/ui/States'
-import { humanize } from '@/lib/format'
+import { roleLabel } from '@/lib/roles'
+import type { Role } from '@/types'
 import { queryKeys } from '@/lib/queries/keys'
 
 /**
@@ -66,7 +67,9 @@ function AcceptInvite({
   onJoined,
   onSignOut,
 }: {
-  businessRole: string
+  // Narrowed to what an invitation can actually carry — an owner is never
+  // invited by email, only promoted from an existing member.
+  businessRole: Exclude<Role, 'owner'>
   email: string
   onJoined: () => Promise<void>
   onSignOut: () => Promise<void>
@@ -99,7 +102,7 @@ function AcceptInvite({
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-600">
           You will join as <span className="font-medium text-slate-900">
-            {humanize(businessRole)}
+            {roleLabel(businessRole)}
           </span>
           .
           <span className="mt-1.5 block text-xs text-slate-500">

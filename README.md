@@ -192,9 +192,17 @@ that creates the business and the owner record together in a single transaction.
 
 ## Automatic deployment
 
-Push to `main` and everything follows: Cloudflare rebuilds the site, GitHub
-Actions applies any new migrations and redeploys the edge function, then checks
-that what actually went live is correct.
+Push to `main` and everything follows: GitHub Actions builds and publishes the
+site, applies any new migrations, redeploys the edge function, then checks that
+what actually went live is correct.
+
+The site is published **from the workflow**, not by Cloudflare's Git
+integration. That integration was what the pipeline originally relied on, and
+when it was disconnected in the dashboard a push migrated the database, the
+verify job checked a site nobody had deployed, and the site stayed blank with
+nothing in the pipeline able to fix it. Deploying from Actions takes the
+dashboard out of the path: the build that is checked is the build that is
+uploaded.
 
 ### One-time setup
 
@@ -204,7 +212,15 @@ nothing else can create them on your behalf.
 
 | Secret | What it grants | Where to get it |
 |---|---|---|
+| `CLOUDFLARE_API_TOKEN` | Publishing to Pages | [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create token** → use the **Cloudflare Pages — Edit** template |
+| `CLOUDFLARE_ACCOUNT_ID` | Names the account to publish into | On the right-hand side of any page in the Cloudflare dashboard |
 | `SUPABASE_DB_URL` | This one database | Supabase → **Connect** → **Session pooler** → copy the URI, and substitute your database password for `[YOUR-PASSWORD]` |
+
+Without the two Cloudflare secrets the workflow still runs, and says in its own
+warnings that it could not publish the site — the site then only updates if the
+Pages project's Git integration is connected. Without `SUPABASE_DB_URL`
+migrations are skipped, with the same kind of warning, but the site is still
+published: one missing credential no longer blocks the other.
 
 Use the **Session pooler** string, not the direct one. GitHub's runners have no
 IPv6, and a new Supabase project's direct database host is IPv6-only — a direct
@@ -230,9 +246,11 @@ is configured.
 
 #### Nothing else
 
-- **No Cloudflare build settings.** `wrangler.toml` declares
-  `pages_build_output_dir = "dist"`, so the output directory is not a dashboard
-  field that can be left blank.
+- **No Cloudflare build settings.** The workflow runs `npm run build` itself and
+  uploads `dist`, and `wrangler.toml` declares `pages_build_output_dir = "dist"`,
+  so the output directory is not a dashboard field that can be left blank.
+- **No connected Git repository in Cloudflare.** Deploying from Actions works
+  whether or not the Pages project is linked to GitHub.
 - **No Cloudflare environment variables.** `.env.production` is committed with
   the project URL and publishable key. Both ship in the browser bundle anyway,
   and the publishable key carries no privileges of its own. Real environment
@@ -250,7 +268,10 @@ is configured.
    `_headers` are present. This is the check that would have caught a blank
    production page.
 3. Refuse a build containing a `sb_secret_` key.
-4. Apply all nine migrations to a throwaway Postgres 17 and run the 159
+4. Refuse a submit handler that re-parses what `zodResolver` already parsed —
+   the mistake that had made every form in the app throw instead of saving.
+5. Build the demo, and check it still carries its own backend.
+6. Apply all nine migrations to a throwaway Postgres 17 and run the 159
    assertions.
 
 `.github/workflows/deploy.yml` — on push to **main** only:
@@ -259,11 +280,15 @@ is configured.
    touches the production database until this passes. This is what makes
    automatic migrations safe rather than reckless: a policy that leaks across
    businesses, or a ledger that double-counts, fails here.
-2. **database** — `supabase db push`, using whichever credential is configured.
-3. **functions** — deploys `create-staff`, or skips with a notice when no
+2. **site** — builds the app and uploads `dist` to Cloudflare Pages with
+   `wrangler`, or skips with a warning naming the two secrets to add. It depends
+   on `gate` and not on `database`, so a missing database credential cannot also
+   keep the site from going up.
+3. **database** — `supabase db push`, using whichever credential is configured.
+4. **functions** — deploys `create-staff`, or skips with a notice when no
    access token is set. Kept separate so the account-wide token is only needed
    by the one job that genuinely requires it.
-4. **verify** — polls the live site until the new bundle appears, then asserts
+5. **verify** — polls the live site until the new bundle appears, then asserts
    it is configured, carries no secret key, resolves deep links, and that the
    `vehicles` table actually exists. A silent blank page becomes a red X with
    the remedy in the error message.

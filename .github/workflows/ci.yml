@@ -57,11 +57,18 @@ jobs:
           echo "dist looks correct:"
           ls -1 dist
 
+      # Matches a key, not the prefix. The bare prefix appears in the bundle by
+      # design — `src/lib/supabase.ts` checks `startsWith('sb_secret_')` and
+      # supabase-js carries the same literal — so grepping for it failed on
+      # every build the moment it was added, and would have gone on failing
+      # whether or not a key was ever present. A real key is the prefix
+      # followed by a long run of key characters; the guard now needs that.
       - name: Refuse a secret key in the bundle
         run: |
           set -euo pipefail
-          if grep -rq "sb_secret_" dist/ 2>/dev/null; then
+          if grep -rqE "sb_secret_[A-Za-z0-9_-]{20,}" dist/ 2>/dev/null; then
             echo "::error::a Supabase secret key is present in the build output. Roll it immediately."
+            grep -rlE "sb_secret_[A-Za-z0-9_-]{20,}" dist/ || true
             exit 1
           fi
           echo "no secret key in the build output"

@@ -9,7 +9,7 @@ import { ErrorState, LoadingState } from '@/components/ui/States'
 import { useAuth, useBusinessId } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { describeError } from '@/lib/supabase'
-import { humanize } from '@/lib/format'
+import { roleLabel } from '@/lib/roles'
 import { queryKeys } from '@/lib/queries/keys'
 import { getBusiness, updateBusiness } from '@/lib/queries/business'
 import { StaffPanel } from './StaffPanel'
@@ -239,7 +239,7 @@ function BusinessPanel() {
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Role</span>
             <span className="font-medium text-slate-900">
-              {humanize(profile?.role)}
+              {roleLabel(profile?.role)}
             </span>
           </div>
           <Button variant="secondary" onClick={() => void signOut()}>

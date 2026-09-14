@@ -56,6 +56,77 @@ jobs:
           PGPASSWORD: postgres
         run: bash scripts/test-db.sh
 
+  # The job this pipeline was missing.
+  #
+  # It previously assumed Cloudflare's Git integration would build and publish
+  # the site on its own. When that integration is disconnected — which is
+  # exactly what happened here — a push migrated the database, the verify job
+  # checked a site nobody had deployed, and the site stayed blank with nothing
+  # in the pipeline able to fix it. Publishing from here removes the dashboard
+  # from the path entirely: the build that is checked is the build that is
+  # uploaded.
+  #
+  # Needs only `gate`, not `database`, so a missing database credential cannot
+  # also keep the site from going up.
+  site:
+    name: Publish the site to Cloudflare Pages
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      deployed: ${{ steps.check.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # A secret cannot be read inside an `if:`, so the decision is made here.
+      - name: Check for a Cloudflare credential
+        id: check
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The site was not published from CI: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not both set."
+            echo "::warning::Add them under Settings -> Secrets and variables -> Actions. Create the token at dash.cloudflare.com/profile/api-tokens with the 'Cloudflare Pages — Edit' template; the account id is on the right of any Cloudflare dashboard page."
+            echo "::warning::Until then the site only updates if the Pages project's Git integration is connected."
+          fi
+
+      - run: npm ci
+        if: steps.check.outputs.deploy == 'true'
+
+      - run: npm run build
+        if: steps.check.outputs.deploy == 'true'
+
+      # The same assertion CI makes, repeated here because this is the build
+      # that actually goes live.
+      - name: The build must be a build
+        if: steps.check.outputs.deploy == 'true'
+        run: |
+          set -euo pipefail
+          grep -qE '/assets/index-[A-Za-z0-9_-]+\.js' dist/index.html \
+            || { echo "::error::dist/index.html references no hashed bundle; refusing to publish it"; exit 1; }
+          test -f dist/_redirects
+          test -f dist/_headers
+
+      # Reads `pages_build_output_dir` from wrangler.toml, so the directory
+      # cannot drift between this and the dashboard.
+      - name: Deploy
+        if: steps.check.outputs.deploy == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy --project-name=sribalajienterprises --branch=main
+
   database:
     name: Apply migrations to production
     needs: gate
@@ -148,8 +219,11 @@ jobs:
 
   verify:
     name: Check what actually went live
-    needs: [database, functions]
-    if: ${{ !inputs.skip_verify }}
+    needs: [site, database, functions]
+    # Runs as long as the site went up. A missing database credential fails the
+    # `database` job, and without this the run would stop there and never say
+    # whether the site itself is actually live — which is the thing being asked.
+    if: ${{ !cancelled() && !inputs.skip_verify && needs.site.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       # Needed by the schema check below, which falls back to the publishable
@@ -174,7 +248,8 @@ jobs:
             sleep 20
           done
           echo "::error::After 10 minutes the site is still not serving a built bundle."
-          echo "::error::If the HTML references /src/main.tsx, the Pages output directory is wrong — wrangler.toml sets it to dist, so check the Pages project picked this file up."
+          echo "::error::Nothing published it. Either add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID so the 'Publish the site' job can deploy (see its warnings above),"
+          echo "::error::or reconnect the Pages project to this repository in the Cloudflare dashboard with build command 'npm run build' and output directory 'dist'."
           exit 1
 
       - name: The site must be configured, and must not carry a secret key
@@ -188,7 +263,9 @@ jobs:
             || { echo "::error::the live bundle has no Supabase URL — it will show the setup screen"; exit 1; }
           printf '%s' "$bundle" | grep -qE 'sb_publishable_|eyJhbGciOi' \
             || { echo "::error::the live bundle has no browser key"; exit 1; }
-          if printf '%s' "$bundle" | grep -q 'sb_secret_'; then
+          # The prefix alone is in every bundle by design — the app checks for
+          # it to refuse starting with one — so this must match a whole key.
+          if printf '%s' "$bundle" | grep -qE 'sb_secret_[A-Za-z0-9_-]{20,}'; then
             echo "::error::a Supabase SECRET key is live in the browser bundle. Roll it now."
             exit 1
           fi

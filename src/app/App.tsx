@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter } from 'react-router-dom'
 import { isSecretKeyMistake, isSupabaseConfigured } from '@/lib/supabase'
 import { SetupRequiredPage } from '@/features/auth/SetupRequiredPage'
 import { AuthProvider } from './AuthProvider'
+import { ErrorBoundary } from './ErrorBoundary'
 import { ToastProvider } from './ToastProvider'
 import { AppRoutes } from './routes'
 
@@ -39,14 +40,16 @@ export function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Router>
-        <AuthProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </AuthProvider>
-      </Router>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <AuthProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </AuthProvider>
+        </Router>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

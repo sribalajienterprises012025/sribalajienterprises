@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useAuth, useRole } from '@/hooks/useAuth'
-import { humanize } from '@/lib/format'
+import { roleLabel } from '@/lib/roles'
 import { visibleNavItems } from './navigation'
 
 /** The overflow menu behind "More" in the phone bottom bar. */
@@ -12,7 +12,7 @@ export function MorePage() {
 
   return (
     <>
-      <PageHeader title="More" subtitle={`${profile?.name ?? ''} · ${humanize(role)}`} />
+      <PageHeader title="More" subtitle={`${profile?.name ?? ''} · ${roleLabel(role)}`} />
 
       <div className="px-4 pb-6">
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">

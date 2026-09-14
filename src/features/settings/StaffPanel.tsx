@@ -10,7 +10,8 @@ import { LoadingState } from '@/components/ui/States'
 import { useAuth, useBusinessId } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { describeError } from '@/lib/supabase'
-import { formatDate, humanize } from '@/lib/format'
+import { formatDate } from '@/lib/format'
+import { roleLabel } from '@/lib/roles'
 import { queryKeys } from '@/lib/queries/keys'
 import {
   createInvite,
@@ -162,7 +163,7 @@ export function StaffPanel() {
                       </p>
                     </div>
                     <Pill
-                      label={humanize(member.role)}
+                      label={roleLabel(member.role)}
                       tone={member.role === 'owner' ? 'info' : 'neutral'}
                     />
                   </div>
@@ -212,7 +213,7 @@ export function StaffPanel() {
                 <div className="min-w-0">
                   <p className="truncate font-medium text-slate-900">{invite.email}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Invited as {humanize(invite.role)} on{' '}
+                    Invited as {roleLabel(invite.role)} on{' '}
                     {formatDate(invite.created_at)}
                   </p>
                 </div>

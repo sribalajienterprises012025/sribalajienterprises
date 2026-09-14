@@ -20,7 +20,7 @@ import {
 } from '@/lib/queries/expenses'
 import type { Expense, ExpenseCategory, ExpenseWithRelations } from '@/types'
 import { ExpenseForm } from './ExpenseForm'
-import { EXPENSE_CATEGORIES } from './categories'
+import { EXPENSE_CATEGORIES, categoryLabel } from './categories'
 
 /** yyyy-MM-01 for the current month — the default range for the expense list. */
 function startOfThisMonth(): string {
@@ -148,7 +148,7 @@ export function ExpensesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium text-slate-900">
-                      {humanize(expense.category)}
+                      {categoryLabel(expense.category)}
                     </p>
                     <p className="mt-0.5 truncate text-sm text-slate-500">
                       {formatDateShort(expense.date)}
@@ -207,7 +207,7 @@ export function ExpensesPage() {
         title="Delete expense"
         message={
           deleting
-            ? `Delete the ${formatCurrency(deleting.amount)} ${humanize(deleting.category).toLowerCase()} entry?`
+            ? `Delete the ${formatCurrency(deleting.amount)} ${categoryLabel(deleting.category).toLowerCase()} entry?`
             : ''
         }
         loading={deleteMutation.isPending}

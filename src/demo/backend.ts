@@ -273,6 +273,73 @@ function stampNow(): Row {
   return { created_at: now, updated_at: now }
 }
 
+/**
+ * Tables carrying an audit trigger in production. Taken from the triggers in
+ * `20250101000800_staff_and_audit.sql`, so the Activity screen in the demo
+ * lists exactly what it would list against Postgres — no more, no less.
+ */
+const AUDITED = new Set([
+  'brokers',
+  'businesses',
+  'clients',
+  'consignments',
+  'credit_debit_notes',
+  'driver_advances',
+  'driver_salary_payments',
+  'drivers',
+  'expenses',
+  'insurance_claims',
+  'invites',
+  'invoices',
+  'opening_balances',
+  'payments',
+  'service_schedules',
+  'trips',
+  'users',
+  'vehicle_maintenance_log',
+  'vehicles',
+])
+
+/**
+ * What `record_audit()` writes: the whole row for an insert or a delete, and
+ * from/to pairs for the columns an update actually changed. `updated_at` moves
+ * on every write by definition, so it is not a change, and an update that
+ * changed nothing earns no entry.
+ */
+function audit(
+  table: string,
+  action: 'insert' | 'update' | 'delete',
+  row: Row,
+  before?: Row,
+) {
+  if (!AUDITED.has(table)) return
+
+  let diff: Row = row
+  if (action === 'update' && before) {
+    diff = {}
+    for (const key of Object.keys(row)) {
+      if (key === 'updated_at') continue
+      if (JSON.stringify(row[key]) === JSON.stringify(before[key])) continue
+      diff[key] = { from: before[key] ?? null, to: row[key] ?? null }
+    }
+    if (Object.keys(diff).length === 0) return
+  }
+
+  db.audit_log = [
+    ...(db.audit_log ?? []),
+    {
+      id: uuid(),
+      business_id: BUSINESS_ID,
+      user_id: currentDemoUserId(),
+      table_name: table,
+      record_id: row.id ?? null,
+      action,
+      changed_at: new Date().toISOString(),
+      diff,
+    },
+  ]
+}
+
 function insert(table: string, body: unknown): Row[] {
   const rows = (Array.isArray(body) ? body : [body]) as Row[]
   const created = rows.map((row) => ({
@@ -281,6 +348,7 @@ function insert(table: string, body: unknown): Row[] {
     ...row,
   }))
   db[table] = [...(db[table] ?? []), ...created]
+  for (const row of created) audit(table, 'insert', row)
   save(db)
   return created
 }
@@ -292,6 +360,7 @@ function update(table: string, params: URLSearchParams, body: Row): Row[] {
     if (!query.filters.every((f) => f(row))) return row
     const next = { ...row, ...body, updated_at: new Date().toISOString() }
     touched.push(next)
+    audit(table, 'update', next, row)
     return next
   })
   save(db)
@@ -307,6 +376,7 @@ function remove(table: string, params: URLSearchParams): Row[] {
     else kept.push(row)
   }
   db[table] = kept
+  for (const row of removed) audit(table, 'delete', row)
   save(db)
   return removed
 }
@@ -338,7 +408,12 @@ function rpc(name: string, body: Row): unknown {
     }
 
     case 'complete_service': {
-      assertCanWrite('vehicle_maintenance_log', 'POST')
+      // The real `complete_service` is SECURITY DEFINER and does its own role
+      // check, allowing owner and helper — so the owner-only rule on
+      // vehicle_maintenance_log does not apply through this path.
+      if (!['owner', 'helper'].includes(demoUser(currentDemoUserId()).role)) {
+        throw new DemoError('your role cannot complete a service', '42501', 403)
+      }
       const id = String(body.p_schedule_id)
       const schedule = (db.service_schedules ?? []).find((s) => s.id === id)
       if (!schedule) throw new Error('service schedule not found')
@@ -356,16 +431,20 @@ function rpc(name: string, body: Row): unknown {
         note: body.p_note ?? null,
       })
 
-      db.service_schedules = (db.service_schedules ?? []).map((s) =>
-        s.id === id
-          ? { ...s, last_done_odometer: odo, last_done_date: body.p_date }
-          : s,
-      )
-      db.vehicles = (db.vehicles ?? []).map((v) =>
-        v.id === schedule.vehicle_id && odo > Number(v.current_odometer)
-          ? { ...v, current_odometer: odo }
-          : v,
-      )
+      // Written directly rather than through update(), so the audit entries
+      // the triggers would write are recorded here by hand.
+      db.service_schedules = (db.service_schedules ?? []).map((s) => {
+        if (s.id !== id) return s
+        const next = { ...s, last_done_odometer: odo, last_done_date: body.p_date }
+        audit('service_schedules', 'update', next, s)
+        return next
+      })
+      db.vehicles = (db.vehicles ?? []).map((v) => {
+        if (v.id !== schedule.vehicle_id || odo <= Number(v.current_odometer)) return v
+        const next = { ...v, current_odometer: odo }
+        audit('vehicles', 'update', next, v)
+        return next
+      })
       save(db)
       return uuid()
     }
