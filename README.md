@@ -212,15 +212,20 @@ nothing else can create them on your behalf.
 
 | Secret | What it grants | Where to get it |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | Publishing to Pages | [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create token** → use the **Cloudflare Pages — Edit** template |
-| `CLOUDFLARE_ACCOUNT_ID` | Names the account to publish into | On the right-hand side of any page in the Cloudflare dashboard |
+| `CLOUDFLARE_API_TOKEN` | Publishing to Pages | [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create Token** → **Create Custom Token**, with permission **Account → Cloudflare Pages → Edit** |
 | `SUPABASE_DB_URL` | This one database | Supabase → **Connect** → **Session pooler** → copy the URI, and substitute your database password for `[YOUR-PASSWORD]` |
 
-Without the two Cloudflare secrets the workflow still runs, and says in its own
-warnings that it could not publish the site — the site then only updates if the
-Pages project's Git integration is connected. Without `SUPABASE_DB_URL`
-migrations are skipped, with the same kind of warning, but the site is still
-published: one missing credential no longer blocks the other.
+The Cloudflare **account id** is not in that table on purpose. It identifies an
+account rather than granting access to one — nothing can be done with it
+without a token — so it is written into `deploy.yml`, the way Cloudflare's own
+examples commit it, and only the token has to be kept secret. Setting a
+`CLOUDFLARE_ACCOUNT_ID` secret or variable still overrides it.
+
+Without the token the workflow still runs and says in its own warnings that it
+could not publish the site — the site then only updates if the Pages project's
+Git integration is connected. Without `SUPABASE_DB_URL` migrations fail with a
+warning naming it, but the site is still published: one missing credential no
+longer blocks the other.
 
 Use the **Session pooler** string, not the direct one. GitHub's runners have no
 IPv6, and a new Supabase project's direct database host is IPv6-only — a direct
@@ -281,7 +286,7 @@ is configured.
    automatic migrations safe rather than reckless: a policy that leaks across
    businesses, or a ledger that double-counts, fails here.
 2. **site** — builds the app and uploads `dist` to Cloudflare Pages with
-   `wrangler`, or skips with a warning naming the two secrets to add. It depends
+   `wrangler`, or skips with a warning naming the one secret to add. It depends
    on `gate` and not on `database`, so a missing database credential cannot also
    keep the site from going up.
 3. **database** — `supabase db push`, using whichever credential is configured.

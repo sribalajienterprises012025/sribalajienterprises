@@ -75,6 +75,14 @@ jobs:
     environment: production
     outputs:
       deployed: ${{ steps.check.outputs.deploy }}
+    env:
+      # The account id is an identifier, not a credential: it says which account
+      # to publish into and grants nothing on its own — a token is still
+      # required, and Cloudflare's own examples commit this value. Keeping it
+      # here means only one thing has to be kept secret. A repository secret or
+      # variable of the same name still wins, so a different account can be
+      # used without editing this file.
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID || 'cd506e18cce7c9bb2ae59c4a68b2bd2d' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,15 +96,15 @@ jobs:
         id: check
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+          if [ -n "$CF_TOKEN" ]; then
+            echo "publishing to account $CLOUDFLARE_ACCOUNT_ID"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::The site was not published from CI: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not both set."
-            echo "::warning::Add them under Settings -> Secrets and variables -> Actions. Create the token at dash.cloudflare.com/profile/api-tokens with the 'Cloudflare Pages — Edit' template; the account id is on the right of any Cloudflare dashboard page."
+            echo "::warning::The site was not published from CI: CLOUDFLARE_API_TOKEN is not set. It is the only secret this job needs."
+            echo "::warning::Add it under Settings -> Secrets and variables -> Actions. Create it at dash.cloudflare.com/profile/api-tokens -> Create Token -> Create Custom Token, with permission Account / Cloudflare Pages / Edit."
             echo "::warning::Until then the site only updates if the Pages project's Git integration is connected."
           fi
 
@@ -124,8 +132,19 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy --project-name=sribalajienterprises --branch=main
+
+      # `pages deploy` fails plainly when the project name is wrong, which is
+      # the one thing here that cannot be checked without the token. Listing the
+      # account's projects turns that into an answer rather than a guess.
+      - name: Name the projects on this account if the deploy failed
+        if: failure() && steps.check.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "::notice::The deploy failed. The Pages projects on this account are listed below;"
+          echo "::notice::if none is called 'sribalajienterprises', change --project-name in this workflow to the one that is."
+          npx --yes wrangler@3 pages project list || true
 
   database:
     name: Apply migrations to production
