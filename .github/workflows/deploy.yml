@@ -125,6 +125,30 @@ jobs:
           test -f dist/_redirects
           test -f dist/_headers
 
+      # Which branch name makes a deployment *production* is a property of the
+      # Pages project, not something this workflow gets to decide. Deploying
+      # under any other name produces a preview: the build goes up, wrangler
+      # reports success, and the real URL keeps serving the previous one —
+      # which is exactly what happened here with a hard-coded `--branch=main`.
+      # So the project is asked what its production branch is called.
+      - name: Ask the project which branch is production
+        id: project
+        if: steps.check.outputs.deploy == 'true'
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/sribalajienterprises"
+          body=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" "$api" --max-time 30 || true)
+          branch=$(printf '%s' "$body" | jq -r '.result.production_branch // empty')
+          if [ -z "$branch" ]; then
+            echo "::warning::Could not read the production branch from the Pages API; falling back to main."
+            echo "::warning::$(printf '%s' "$body" | jq -r '.errors // empty' 2>/dev/null || true)"
+            branch=main
+          fi
+          echo "production branch for this project is '$branch'"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
       # Reads `pages_build_output_dir` from wrangler.toml, so the directory
       # cannot drift between this and the dashboard.
       - name: Deploy
@@ -139,7 +163,7 @@ jobs:
           # to Cloudflare Pages cannot do — it fails with "Authentication error
           # [code: 10000]" and reads like a bad token when the token is fine.
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID || 'cd506e18cce7c9bb2ae59c4a68b2bd2d' }}
-          command: pages deploy --project-name=sribalajienterprises --branch=main
+          command: pages deploy --project-name=sribalajienterprises --branch=${{ steps.project.outputs.branch }}
 
       # `pages deploy` fails plainly when the project name is wrong, which is
       # the one thing here that cannot be checked without the token. Listing the
