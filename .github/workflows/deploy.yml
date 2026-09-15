@@ -132,6 +132,13 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Passed explicitly, not left to the job environment above: the action
+          # sets CLOUDFLARE_ACCOUNT_ID from this input, so an absent input
+          # overrides the job env with an empty string. Wrangler then has no
+          # account and falls back to reading /memberships, which a token scoped
+          # to Cloudflare Pages cannot do — it fails with "Authentication error
+          # [code: 10000]" and reads like a bad token when the token is fine.
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID || 'cd506e18cce7c9bb2ae59c4a68b2bd2d' }}
           command: pages deploy --project-name=sribalajienterprises --branch=main
 
       # `pages deploy` fails plainly when the project name is wrong, which is
