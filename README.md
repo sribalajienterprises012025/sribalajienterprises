@@ -412,6 +412,26 @@ sign-in offers to create the business; that runs `bootstrap_business()`, which
 makes the business and your owner record in one transaction. From there,
 **Settings → Staff** invites a helper or a CA.
 
+### If storage policies were skipped
+
+`supabase db push` warns, rather than stopping, when the role running
+migrations cannot create policies on `storage.objects` — which is the case on
+a project where `postgres` is not a member of `supabase_storage_admin`:
+
+```
+WARNING: Storage policies were NOT applied: supabase_storage_admin owns
+storage.objects and postgres is not a member of it.
+```
+
+Everything except document attachments works. To finish storage, open the
+Supabase **SQL Editor**, paste [`supabase/storage-policies.sql`](supabase/storage-policies.sql)
+and run it once. That file is generated from the migration and CI fails if the
+two drift, so it always says exactly what the migration would have applied.
+
+This used to abort the whole push, which took the six migrations after it down
+with it — no invoices, no ledgers, no reports — over a feature that only covers
+file attachments.
+
 ### If `db push` stops on the storage migration
 
 `20250101000200_storage.sql` sets access policies on `storage.objects`, a table

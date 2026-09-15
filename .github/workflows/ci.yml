@@ -88,6 +88,12 @@ jobs:
           fi
           echo "no form re-parses resolver output"
 
+      # The storage policies live in two files — the migration, and a copy to
+      # run by hand where the migrating role cannot create them. Two copies of
+      # a security rule that can drift is how one quietly becomes wrong.
+      - name: The standalone storage policies must match the migration
+        run: node scripts/storage-policies.mjs --check
+
       # The demo is the only way to click through the whole app without a
       # database, so it is worth keeping buildable rather than letting it rot.
       # Runs last: it replaces dist/ with a build that is not production's.
