@@ -1,9 +1,13 @@
 name: Deploy
 
-# Push to main and the database follows the code. Cloudflare Pages rebuilds the
-# site on its own through the Git integration, so this workflow owns the parts
-# Cloudflare cannot: applying migrations, deploying the edge function, and then
-# checking that what went live is actually correct.
+# Push to main and everything follows. This workflow owns the whole deploy:
+# it proves the migrations are safe against a throwaway database, builds and
+# uploads the site to Cloudflare Pages, applies the migrations, deploys the
+# edge function, and then checks that what actually went live is correct.
+#
+# Nothing here depends on Cloudflare's Git integration. That is deliberate:
+# relying on it is what produced a blank site for days, because a disconnected
+# integration fails silently and no push can reach it.
 on:
   push:
     branches: [main]
@@ -185,9 +189,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
+      # Installed straight from a pinned release rather than through
+      # supabase/setup-cli, which resolves "latest" through the GitHub API on
+      # every run. That lookup is unauthenticated and rate-limited per runner
+      # IP, and it took a deploy down with "Failed to resolve latest Supabase
+      # CLI release: rate limit exceeded" — a migration blocked by someone
+      # else's traffic. A pinned URL depends on nothing but the release itself,
+      # and the version is then a deliberate choice rather than whatever
+      # shipped this morning.
+      - name: Install the Supabase CLI
+        env:
+          SUPABASE_CLI_VERSION: '2.34.3'
+        run: |
+          set -euo pipefail
+          url="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}/supabase_linux_amd64.tar.gz"
+          for attempt in 1 2 3; do
+            if curl -fsSL --retry 2 --max-time 60 "$url" -o supabase.tar.gz; then break; fi
+            echo "download attempt $attempt failed; retrying"
+            sleep $((attempt * 5))
+          done
+          tar -xzf supabase.tar.gz supabase
+          sudo install -m 755 supabase /usr/local/bin/supabase
+          rm -f supabase supabase.tar.gz
+          supabase --version
 
       # A secret cannot be read inside an `if:` condition, so which path to take
       # is decided here and published as a step output instead.
@@ -256,10 +280,30 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: supabase/setup-cli@v1
+      # Installed straight from a pinned release rather than through
+      # supabase/setup-cli, which resolves "latest" through the GitHub API on
+      # every run. That lookup is unauthenticated and rate-limited per runner
+      # IP, and it took a deploy down with "Failed to resolve latest Supabase
+      # CLI release: rate limit exceeded" — a migration blocked by someone
+      # else's traffic. A pinned URL depends on nothing but the release itself,
+      # and the version is then a deliberate choice rather than whatever
+      # shipped this morning.
+      - name: Install the Supabase CLI
         if: steps.check.outputs.deploy == 'true'
-        with:
-          version: latest
+        env:
+          SUPABASE_CLI_VERSION: '2.34.3'
+        run: |
+          set -euo pipefail
+          url="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}/supabase_linux_amd64.tar.gz"
+          for attempt in 1 2 3; do
+            if curl -fsSL --retry 2 --max-time 60 "$url" -o supabase.tar.gz; then break; fi
+            echo "download attempt $attempt failed; retrying"
+            sleep $((attempt * 5))
+          done
+          tar -xzf supabase.tar.gz supabase
+          sudo install -m 755 supabase /usr/local/bin/supabase
+          rm -f supabase supabase.tar.gz
+          supabase --version
 
       - name: Deploy
         if: steps.check.outputs.deploy == 'true'
