@@ -183,7 +183,7 @@ export function InvoicesPage() {
               type="button"
               onClick={() => setStatus(filter.value)}
               className={[
-                'shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors',
+                'inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium transition-colors',
                 status === filter.value
                   ? 'bg-brand-600 text-white'
                   : 'bg-white text-slate-600 ring-1 ring-slate-200',

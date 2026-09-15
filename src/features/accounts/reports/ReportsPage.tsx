@@ -353,7 +353,7 @@ export function ReportsPage() {
                   type="button"
                   onClick={() => setRangeKey(item.key)}
                   className={[
-                    'shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors',
+                    'inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium transition-colors',
                     rangeKey === item.key
                       ? 'bg-brand-600 text-white'
                       : 'bg-white text-slate-600 ring-1 ring-slate-200',
@@ -366,7 +366,7 @@ export function ReportsPage() {
                 type="button"
                 onClick={() => setRangeKey('custom')}
                 className={[
-                  'shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors',
+                  'inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium transition-colors',
                   rangeKey === 'custom'
                     ? 'bg-brand-600 text-white'
                     : 'bg-white text-slate-600 ring-1 ring-slate-200',
@@ -427,7 +427,7 @@ export function ReportsPage() {
               type="button"
               onClick={() => setReport(value)}
               className={[
-                'shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors',
+                'inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-lg px-3.5 text-sm font-medium transition-colors',
                 report === value
                   ? 'bg-slate-900 text-white'
                   : 'bg-white text-slate-600 ring-1 ring-slate-200',

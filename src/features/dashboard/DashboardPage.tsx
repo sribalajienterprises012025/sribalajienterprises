@@ -181,7 +181,10 @@ export function DashboardPage() {
               <CardHeader
                 title="On the road"
                 action={
-                  <Link to="/trips" className="text-sm font-medium text-brand-600">
+                  <Link
+                    to="/trips"
+                    className="inline-flex min-h-[40px] items-center px-2 text-sm font-medium text-brand-600"
+                  >
                     All trips
                   </Link>
                 }

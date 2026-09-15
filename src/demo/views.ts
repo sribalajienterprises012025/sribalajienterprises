@@ -214,8 +214,11 @@ export function driverLedger(t: Tables): Row[] {
     const salaries = (t.driver_salary_payments ?? []).filter((s) => s.driver_id === id)
     const trips = liveTrips(t).filter((x) => x.driver_id === id)
 
-    const earned = sum(salaries, 'net_payable')
+    // What the driver earned, and what is still to hand over. The two differ
+    // by any advance a salary run recovered — see 20250101000900_driver_cost.
+    const earned = sum(salaries, 'salary_earned')
     const paid = sum(salaries, 'amount_paid')
+    const due = sum(salaries, 'net_payable') - paid
     const open = opening(t, 'driver', id)
 
     return {
@@ -232,9 +235,9 @@ export function driverLedger(t: Tables): Row[] {
       advances_total: sum(advances, 'amount'),
       salary_earned: earned,
       salary_paid: paid,
-      salary_due: earned - paid,
+      salary_due: due,
       trip_count: trips.length,
-      net_payable: earned - paid - open,
+      net_payable: due - open,
     }
   })
 }
@@ -283,7 +286,8 @@ export function monthlyPl(t: Tables): Row[] {
     const commission = sum(trips, 'broker_commission')
     const total = sum(exps, 'amount')
     const salaryExpense = head('salary_expense')
-    const salaries = sum(sal, 'net_payable')
+    // The cost of the work, not what was left after advances were recovered.
+    const salaries = sum(sal, 'salary_earned')
 
     return {
       business_id: businessId,

@@ -143,6 +143,7 @@ export function TripsPage() {
       <div className="space-y-3 px-4 lg:px-6">
         <input
           type="search"
+          aria-label="Search trips"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search route, LR number or goods"
@@ -156,7 +157,7 @@ export function TripsPage() {
               type="button"
               onClick={() => setStatus(filter.value)}
               className={[
-                'shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors',
+                'inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full px-3.5 text-sm font-medium transition-colors',
                 status === filter.value
                   ? 'bg-brand-600 text-white'
                   : 'bg-white text-slate-600 ring-1 ring-slate-200',

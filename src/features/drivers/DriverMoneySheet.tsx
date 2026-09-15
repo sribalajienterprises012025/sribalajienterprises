@@ -45,7 +45,7 @@ export function DriverMoneySheet({
           type="button"
           onClick={() => setMode('advances')}
           className={[
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
             mode === 'advances' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
           ].join(' ')}
         >
@@ -55,7 +55,7 @@ export function DriverMoneySheet({
           type="button"
           onClick={() => setMode('salary')}
           className={[
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
             mode === 'salary' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
           ].join(' ')}
         >

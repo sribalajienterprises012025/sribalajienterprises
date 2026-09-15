@@ -56,7 +56,7 @@ export function SettingsPage() {
               type="button"
               onClick={() => setTab(value)}
               className={[
-                'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+                'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
                 tab === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
               ].join(' ')}
             >

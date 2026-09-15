@@ -490,12 +490,34 @@ insert into public.driver_salary_payments (
 insert into public.expenses (business_id, category, date, amount, payment_mode)
 values (:'biz_a', 'salary', current_date, 19000, 'bank');
 
--- expenses_total is now 32,000 (13,000 + 19,000), but net_profit adds the
--- 19,000 salary expense back and deducts the 19,000 salary run instead:
--- 110,000 - 2,400 - 32,000 + 19,000 - 19,000 = 75,600
+-- The run above: the driver earned 22,000, of which 3,000 recovered an earlier
+-- advance, leaving 19,000 to hand over.
+--
+-- The cost of that month's driving is 22,000. The 3,000 advance had already
+-- left the business and is booked nowhere else -- driver_advances is not an
+-- expense table -- so charging only the 19,000 net would lose it, and overstate
+-- profit by exactly the advance. This assertion previously expected 75,600,
+-- which was that mistake written down as a rule.
+--
+-- expenses_total is now 32,000 (13,000 + 19,000); net_profit adds the 19,000
+-- salary expense back so it is not deducted twice, and deducts what was earned:
+-- 110,000 - 2,400 - 32,000 + 19,000 - 22,000 = 72,600
 select pg_temp.expect('salary counted once, not twice',
   (select net_profit::numeric from public.monthly_pl
-   where month = date_trunc('month', current_date)::date), 75600::numeric);
+   where month = date_trunc('month', current_date)::date), 72600::numeric);
+
+select pg_temp.expect('the P&L charges what the driver earned, not what was left after an advance',
+  (select driver_salaries::numeric from public.monthly_pl
+   where month = date_trunc('month', current_date)::date), 22000::numeric);
+
+select pg_temp.expect('the driver ledger reports earnings as earnings',
+  (select salary_earned::numeric from public.driver_ledger
+   where driver_id = :'drv_a'), 22000::numeric);
+
+-- Still to hand over: 19,000 payable on the run, all of it paid.
+select pg_temp.expect('salary due is net of the advance the run recovered',
+  (select salary_due::numeric from public.driver_ledger
+   where driver_id = :'drv_a'), 0::numeric);
 
 -- GST summary
 select pg_temp.expect('GST summary taxable value',

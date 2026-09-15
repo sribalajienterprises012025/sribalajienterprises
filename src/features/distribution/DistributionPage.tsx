@@ -56,7 +56,7 @@ export function DistributionPage() {
             type="button"
             onClick={() => setTab('grid')}
             className={[
-              'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
               tab === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
             ].join(' ')}
           >
@@ -66,7 +66,7 @@ export function DistributionPage() {
             type="button"
             onClick={() => setTab('consignments')}
             className={[
-              'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
               tab === 'consignments'
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-500',
@@ -142,7 +142,7 @@ function WeekPlan() {
           <button
             type="button"
             onClick={() => setWeekStart(weekStartFor(new Date()))}
-            className="text-xs font-medium text-brand-600"
+            className="inline-flex min-h-[40px] items-center px-2 text-xs font-medium text-brand-600"
           >
             This week
           </button>

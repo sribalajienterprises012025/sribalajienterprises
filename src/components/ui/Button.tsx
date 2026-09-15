@@ -20,8 +20,10 @@ const VARIANTS: Record<Variant, string> = {
 }
 
 const SIZES: Record<Size, string> = {
-  // min-h keeps every control at a comfortable touch target on a phone.
-  sm: 'text-sm px-3 py-1.5 min-h-[36px]',
+  // min-h keeps every control at a comfortable touch target on a phone. 36px
+  // was under the finger size every mobile guideline agrees on, and these are
+  // the row actions — Edit, Remove, Mark paid — tapped from a truck yard.
+  sm: 'text-sm px-3 py-1.5 min-h-[40px]',
   md: 'text-sm px-4 py-2.5 min-h-[44px]',
   lg: 'text-base px-5 py-3 min-h-[48px]',
 }
