@@ -202,15 +202,19 @@ jobs:
           SUPABASE_CLI_VERSION: '2.34.3'
         run: |
           set -euo pipefail
+          # Unpacked in the runner's temp directory, never the checkout: the
+          # repository has a `supabase/` directory of its own, and extracting a
+          # file of that name beside it fails with "Cannot open: File exists".
+          work="$RUNNER_TEMP/supabase-cli"
+          mkdir -p "$work"
           url="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}/supabase_linux_amd64.tar.gz"
           for attempt in 1 2 3; do
-            if curl -fsSL --retry 2 --max-time 60 "$url" -o supabase.tar.gz; then break; fi
+            if curl -fsSL --retry 2 --max-time 120 "$url" -o "$work/cli.tar.gz"; then break; fi
             echo "download attempt $attempt failed; retrying"
             sleep $((attempt * 5))
           done
-          tar -xzf supabase.tar.gz supabase
-          sudo install -m 755 supabase /usr/local/bin/supabase
-          rm -f supabase supabase.tar.gz
+          tar -xzf "$work/cli.tar.gz" -C "$work" supabase
+          sudo install -m 755 "$work/supabase" /usr/local/bin/supabase
           supabase --version
 
       # A secret cannot be read inside an `if:` condition, so which path to take
@@ -294,15 +298,19 @@ jobs:
           SUPABASE_CLI_VERSION: '2.34.3'
         run: |
           set -euo pipefail
+          # Unpacked in the runner's temp directory, never the checkout: the
+          # repository has a `supabase/` directory of its own, and extracting a
+          # file of that name beside it fails with "Cannot open: File exists".
+          work="$RUNNER_TEMP/supabase-cli"
+          mkdir -p "$work"
           url="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}/supabase_linux_amd64.tar.gz"
           for attempt in 1 2 3; do
-            if curl -fsSL --retry 2 --max-time 60 "$url" -o supabase.tar.gz; then break; fi
+            if curl -fsSL --retry 2 --max-time 120 "$url" -o "$work/cli.tar.gz"; then break; fi
             echo "download attempt $attempt failed; retrying"
             sleep $((attempt * 5))
           done
-          tar -xzf supabase.tar.gz supabase
-          sudo install -m 755 supabase /usr/local/bin/supabase
-          rm -f supabase supabase.tar.gz
+          tar -xzf "$work/cli.tar.gz" -C "$work" supabase
+          sudo install -m 755 "$work/supabase" /usr/local/bin/supabase
           supabase --version
 
       - name: Deploy
