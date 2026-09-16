@@ -438,6 +438,13 @@ functions, each of which proves the trip is theirs before it touches a row.
 `scripts/test-db.sh` asks all of it directly, the way a driver with a browser
 console would.
 
+### Checking a hand-run step landed
+
+`supabase/check-storage-policies.sql` answers, in four lines, whether the
+policies below are actually on the database. Worth running after any of them,
+because a step done by hand is a step that can silently not happen — and none
+of what it checks fails loudly in the app.
+
 ### If storage policies were skipped
 
 `supabase db push` warns, rather than stopping, when the role running
