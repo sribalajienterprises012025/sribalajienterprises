@@ -1212,3 +1212,93 @@ select pg_temp.expect_denied('and cannot call a driver function',
   format('select public.driver_log_odometer(%L, null, 1)', :'trip1'));
 
 reset role;
+
+-- =============================================================================
+-- An account that made its own books by accident can still join yours
+--
+-- The trap it climbs out of: signing up without an invitation waiting offers
+-- "create your business", and taking that offer starts a separate, empty set
+-- of books that can never see the real ones.
+-- =============================================================================
+reset role;
+
+\set stray 33333333-0000-0000-0000-00000000000a
+\set stray_biz cccccccc-0000-0000-0000-00000000000c
+\set busy_stray 33333333-0000-0000-0000-00000000000b
+\set busy_biz dddddddd-0000-0000-0000-00000000000d
+
+insert into auth.users (id, email) values
+  (:'stray',      'stray@example.com'),
+  (:'busy_stray', 'busy@example.com');
+
+insert into public.businesses (id, name, fy_start_month) values
+  (:'stray_biz', 'Books Nobody Meant To Make', 4),
+  (:'busy_biz',  'Books With Work In Them',    4);
+
+insert into public.users (id, business_id, name, role) values
+  (:'stray',      :'stray_biz', 'Dinesh',     'owner'),
+  (:'busy_stray', :'busy_biz',  'Busy Stray', 'owner');
+
+-- The second one has entered something, which changes the answer entirely.
+insert into public.vehicles (business_id, reg_no, current_odometer)
+values (:'busy_biz', 'TS 09 ZZ 1111', 1000);
+
+-- Both are invited into business A, the real one.
+insert into public.invites (business_id, email, name, role, invited_by) values
+  (:'biz_a', 'stray@example.com', 'Dinesh',     'helper', :'owner_a'),
+  (:'biz_a', 'busy@example.com',  'Busy Stray', 'helper', :'owner_a');
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'stray', false);
+
+select pg_temp.expect('the stray account sees its own books, not business A''s',
+  (select count(*)::int from public.trips), 0);
+select pg_temp.expect('but it can see the invitation addressed to it',
+  (select count(*)::int from public.invites where lower(email) = 'stray@example.com'), 1);
+
+select public.claim_invite();
+
+select pg_temp.expect('accepting moves the account into business A',
+  (select business_id from public.users where id = :'stray'), :'biz_a'::uuid);
+select pg_temp.expect('at the role it was invited at',
+  (select role from public.users where id = :'stray'), 'helper');
+select pg_temp.expect('and it now sees the real books',
+  (select count(*)::int > 0 from public.trips), true);
+
+reset role;
+select pg_temp.expect('the empty business it left is gone',
+  (select count(*)::int from public.businesses where id = :'stray_biz'), 0);
+
+-- The one with work in it must not be absorbed: joining would leave the work
+-- behind in books nobody can reach.
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'busy_stray', false);
+select pg_temp.expect_denied('an account with work of its own is refused',
+  'select public.claim_invite()');
+
+reset role;
+select pg_temp.expect('and keeps its books until someone decides what to do',
+  (select count(*)::int from public.businesses where id = :'busy_biz'), 1);
+select pg_temp.expect('with the work still in them',
+  (select count(*)::int from public.vehicles where business_id = :'busy_biz'), 1);
+
+-- Nobody may leave a business that has other people in it, empty or not.
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+insert into public.invites (business_id, email, name, role, invited_by)
+select :'biz_b', 'helper.a@example.com', 'Helper A', 'helper', :'owner_b'
+where false;
+reset role;
+insert into public.invites (business_id, email, name, role, invited_by)
+values (:'biz_b', 'helper.a@example.com', 'Helper A', 'helper', :'owner_b');
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect_denied('a member of a shared business cannot be poached by an invitation',
+  'select public.claim_invite()');
+
+reset role;
+select pg_temp.expect('and stays where they were',
+  (select business_id from public.users where id = :'help_a'), :'biz_a'::uuid);
+
+reset role;

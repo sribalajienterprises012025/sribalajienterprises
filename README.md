@@ -438,6 +438,24 @@ functions, each of which proves the trip is theirs before it touches a row.
 `scripts/test-db.sh` asks all of it directly, the way a driver with a browser
 console would.
 
+### Two people cannot see each other's work
+
+Almost always one cause: they are in two businesses rather than one. An account
+that signs up with no invitation waiting is offered *create your business*, and
+taking that offer starts a separate, empty set of books. The tenancy rule then
+keeps the two apart correctly and for ever, which from inside the app is
+indistinguishable from something being broken.
+
+- `supabase/who-sees-what.sql` — read-only. Says how many businesses exist, who
+  is in each, and where the trips actually are.
+- If the stray books are **empty**, nothing else is needed: the owner invites
+  that email from **Settings → Staff**, and the next time the person opens the
+  app a banner offers to move them across. Their empty business is removed with
+  them.
+- If work has already been entered in the stray books, `claim_invite()` refuses
+  rather than stranding it. `supabase/merge-business.sql` moves one set of books
+  into the other, in one transaction, after showing you what it is about to do.
+
 ### Checking a hand-run step landed
 
 `supabase/check-storage-policies.sql` answers, in four lines, whether the

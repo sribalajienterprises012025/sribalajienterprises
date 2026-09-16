@@ -71,6 +71,26 @@ export async function deleteInvite(id: string): Promise<void> {
 }
 
 /** Any pending invitation addressed to the signed-in account's own email. */
+/**
+ * A pending invitation addressed to this account, for someone who is already
+ * signed in somewhere.
+ *
+ * Filtered by email, unlike findMyInvite: the invites policy also lets an owner
+ * read the invitations they sent, so an unfiltered query would tell an owner
+ * they had been invited to their own business.
+ */
+export async function findInviteAddressedTo(email: string): Promise<Invite | null> {
+  const { data, error } = await supabase
+    .from('invites')
+    .select('*')
+    .is('accepted_at', null)
+    .ilike('email', email)
+    .limit(1)
+
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
 export async function findMyInvite(): Promise<Invite | null> {
   const { data, error } = await supabase
     .from('invites')

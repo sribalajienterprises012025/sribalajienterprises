@@ -162,9 +162,24 @@ function CreateBusiness({
 
   return (
     <>
-      <div className="mb-8 text-center">
-        <h1 className="text-2xl font-semibold text-slate-900">One-time setup</h1>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-semibold text-slate-900">Start a new business</h1>
         <p className="mt-1 text-sm text-slate-500">Signed in as {email}</p>
+      </div>
+
+      {/* The mistake this warns about is one nothing on screen explains
+          afterwards: two people in the same firm each start their own books,
+          and neither can see the other's work, for ever. */}
+      <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm font-medium text-amber-900">
+          Does someone at your company already use this app?
+        </p>
+        <p className="mt-1 text-sm text-amber-800">
+          Then do not start a business here. Ask them to add you in{' '}
+          <span className="font-medium">Settings → Staff</span>, on this exact email
+          address. What you start here is a separate, empty set of books, and their
+          trips and accounts will not be in it.
+        </p>
       </div>
 
       <form
@@ -206,8 +221,10 @@ function CreateBusiness({
         </Button>
 
         <p className="text-center text-xs text-slate-400">
-          Expecting to join an existing business? Make sure you signed up with the email
-          address you were invited on, then sign out and back in.
+          Expecting to join an existing business? Make sure you signed up with the exact
+          email address you were invited on, then sign out and back in. If you start a
+          business here by mistake and enter nothing in it, a later invitation will
+          still move this account across.
         </p>
 
         <button
