@@ -1302,3 +1302,50 @@ select pg_temp.expect('and stays where they were',
   (select business_id from public.users where id = :'help_a'), :'biz_a'::uuid);
 
 reset role;
+
+-- =============================================================================
+-- Two owners
+--
+-- The ordinary arrangement in a family firm: two people who both do everything.
+-- Nothing in the schema limits a business to one owner, and this is what that
+-- means in practice — including the part worth knowing before choosing it.
+-- =============================================================================
+reset role;
+
+\set owner_a2 11111111-0000-0000-0000-000000000006
+insert into auth.users (id, email) values (:'owner_a2', 'partner.a@example.com');
+insert into public.users (id, business_id, name, role)
+values (:'owner_a2', :'biz_a', 'Partner A', 'owner');
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a2', false);
+
+select pg_temp.expect('a second owner reads the same books',
+  (select count(*)::int > 0 from public.trips), true);
+select pg_temp.expect('including the P&L',
+  (select count(*)::int > 0 from public.monthly_pl), true);
+select pg_temp.expect('and the audit trail',
+  (select count(*)::int > 0 from public.audit_log), true);
+
+insert into public.clients (business_id, name) values (:'biz_a', 'Added By Partner');
+select pg_temp.expect('a second owner writes master data',
+  (select count(*)::int from public.clients where name = 'Added By Partner'), 1);
+
+update public.businesses set gstin = '36AAAPA1234A1Z5' where id = :'biz_a';
+select pg_temp.expect('and edits the business itself',
+  (select gstin from public.businesses where id = :'biz_a'), '36AAAPA1234A1Z5');
+
+-- The one thing an owner may not do, whether there are two of them or ten:
+-- demote themselves. Without this the last owner can lock every door from the
+-- inside and nobody is left who can open settings again.
+select pg_temp.expect_denied('an owner cannot demote themselves',
+  format('update public.users set role = ''helper'' where id = %L', :'owner_a2'));
+
+-- The consequence of two equals, stated rather than discovered: each can put
+-- the other out. There is no seniority between owners.
+update public.users set role = 'helper' where id = :'owner_a';
+select pg_temp.expect('one owner can demote the other',
+  (select role from public.users where id = :'owner_a'), 'helper');
+
+reset role;
+update public.users set role = 'owner' where id = :'owner_a';

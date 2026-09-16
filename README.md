@@ -438,6 +438,19 @@ functions, each of which proves the trip is theirs before it touches a row.
 `scripts/test-db.sh` asks all of it directly, the way a driver with a browser
 console would.
 
+### Two owners
+
+Nothing limits a business to one owner, and two people who both do everything
+is the ordinary arrangement in a family firm. Invite the second person as a
+helper, then change their role to Owner in **Settings → Staff** — an owner is
+promoted from an existing member rather than created by email, so that typing
+an address can never mint one.
+
+Both then see and change everything, including settings, reports and the audit
+trail. Worth knowing before choosing it: there is no seniority between owners,
+so each can demote or remove the other. Neither can demote *themselves*, which
+is what stops the last owner locking the door from the inside.
+
 ### Two people cannot see each other's work
 
 Almost always one cause: they are in two businesses rather than one. An account
