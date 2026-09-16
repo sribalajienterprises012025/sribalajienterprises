@@ -88,6 +88,22 @@ jobs:
           fi
           echo "no form re-parses resolver output"
 
+      # Supabase re-emits SIGNED_IN whenever the tab becomes visible, which on a
+      # phone is every return from another app. Reloading the profile there put
+      # the whole app behind the "Signing you in…" screen, so an open form was
+      # unmounted and a half-typed trip was lost — and if that reload failed on
+      # a connection that had not woken up yet, an onboarded owner was shown
+      # "create your business", one tap away from stranding their records in a
+      # second business. Both come back the moment these two lines go.
+      - name: Coming back to the app must not reload the profile behind a spinner
+        run: |
+          set -euo pipefail
+          grep -q 'settledFor.current === nextSession.user.id' src/app/AuthProvider.tsx \
+            || { echo "::error::AuthProvider reloads the profile on every SIGNED_IN again. Returning from another app now discards whatever is on screen."; exit 1; }
+          grep -q 'settledFor.current !== activeSession.user.id' src/app/AuthProvider.tsx \
+            || { echo "::error::AuthProvider treats a failed profile read as 'not onboarded' again. A dropped connection now offers to create a second business."; exit 1; }
+          echo "an app switch keeps the screen it came back to"
+
       # The storage policies live in two files — the migration, and a copy to
       # run by hand where the migrating role cannot create them. Two copies of
       # a security rule that can drift is how one quietly becomes wrong.

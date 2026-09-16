@@ -9,8 +9,17 @@ export interface AuthState {
   profile: AppUser | null
   /** True until the initial session + profile lookup settles. */
   loading: boolean
+  /**
+   * Set when the profile could not be read at all — a dropped connection
+   * rather than an account that still needs onboarding. The two look identical
+   * from the router's side and must not be confused: one needs a retry, the
+   * other needs a business created.
+   */
+  profileError: unknown
   /** Re-reads the profile, e.g. straight after onboarding. */
   refreshProfile: () => Promise<void>
+  /** Same, but shows the loading screen — for the "try again" button. */
+  retryProfile: () => Promise<void>
   signOut: () => Promise<void>
 }
 
