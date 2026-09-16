@@ -17,7 +17,7 @@ export default defineConfig({
     VitePWA({
       disable: isDemo,
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: ['icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'Balaji Enterprises',
         short_name: 'Balaji',

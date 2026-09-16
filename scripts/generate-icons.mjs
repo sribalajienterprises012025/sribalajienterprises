@@ -174,6 +174,9 @@ function render(size, { inset = 1, cornerRadius = 0.18 } = {}) {
 mkdirSync(OUT_DIR, { recursive: true })
 
 const targets = [
+  // iOS asks for 180 by name. Handing it the 192 works, but it is resampled
+  // on the home screen and the thin strokes in the mark go soft.
+  ['icon-180.png', render(180)],
   ['icon-192.png', render(192)],
   ['icon-512.png', render(512)],
   // Maskable icons get cropped to a circle by the launcher, so the artwork is

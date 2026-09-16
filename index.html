@@ -6,7 +6,16 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Balaji Enterprises — transport, distribution and accounts management" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <!-- iOS before 16.4 does not read the manifest, and without these an
+         icon added to the home screen just reopens Safari with its chrome.
+         The status bar stays "default" because the app is light and its top
+         edge has no safe-area padding: translucent would run the first row
+         of every screen under the clock. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Balaji" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
     <title>Balaji Enterprises</title>
   </head>
   <body>
