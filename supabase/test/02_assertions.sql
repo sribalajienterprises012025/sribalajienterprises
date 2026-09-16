@@ -1108,31 +1108,78 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub', :'drv_login_a', false);
 
+-- The write functions hand nothing back, and the result is read from the
+-- driver's own view. They used to return the trip row — which carries the
+-- freight, the commission and the TDS — so a driver who called the RPC
+-- directly was handed everything my_trips exists to keep out of their hands.
+select pg_temp.expect('the driver functions return nothing at all',
+  (select count(*)::int from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('driver_log_odometer', 'driver_set_trip_status',
+                       'driver_log_expense', 'driver_attach_pod')
+     and p.prorettype = 'void'::regtype), 4);
+
+-- The lookup they all start with does return the trip row, so nobody may call
+-- it. `revoke from public` does not do this on Supabase: its default
+-- privileges grant EXECUTE to anon and authenticated by name, and a revoke
+-- from PUBLIC leaves a named grant alone.
+select pg_temp.expect('a driver cannot call the internal trip lookup',
+  has_function_privilege('authenticated', 'public.driver_own_trip(uuid)', 'execute'), false);
+select pg_temp.expect('nor can an anonymous visitor',
+  has_function_privilege('anon', 'public.driver_own_trip(uuid)', 'execute'), false);
+select pg_temp.expect('and nobody signed out can call the write functions',
+  (select count(*)::int from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('driver_log_odometer', 'driver_set_trip_status',
+                       'driver_log_expense', 'driver_attach_pod')
+     and has_function_privilege('anon', p.oid, 'execute')), 0);
+
+-- The rule behind all of the above, asked of the whole schema rather than of
+-- the four functions that broke it. A function that returns a table's row type
+-- hands back every column of that row — including the ones a view was built to
+-- leave out — so none of them may be callable from a browser. This would have
+-- caught the bug above on the day it was written.
+select pg_temp.expect('no function hands a whole table row to a caller',
+  (select count(*)::int
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   join pg_type t on t.oid = p.prorettype
+   join pg_class c on c.oid = t.typrelid
+   where n.nspname = 'public'
+     and c.relkind = 'r'
+     and (has_function_privilege('anon', p.oid, 'execute')
+          or has_function_privilege('authenticated', p.oid, 'execute'))), 0);
+
+select public.driver_log_odometer(:'trip2', null, 181000);
 select pg_temp.expect('driver logs a closing meter reading',
-  (select odometer_end from public.driver_log_odometer(:'trip2', null, 181000)), 181000);
+  (select odometer_end from public.my_trips where id = :'trip2'), 181000);
 select pg_temp.expect_denied('a closing reading below the opening one is refused',
   format('select public.driver_log_odometer(%L, 181000, 180000)', :'trip2'));
+
+select public.driver_set_trip_status(:'trip2', 'delivered');
 select pg_temp.expect('driver marks a trip delivered',
-  (select status from public.driver_set_trip_status(:'trip2', 'delivered')), 'delivered');
+  (select status from public.my_trips where id = :'trip2'), 'delivered');
 select pg_temp.expect_denied('driver cannot close a trip',
   format('select public.driver_set_trip_status(%L, ''closed'')', :'trip2'));
+
+select public.driver_log_expense(:'trip2', 'fuel', 2500, 'cash', 'Diesel');
 select pg_temp.expect('driver logs diesel against their own trip',
-  (select amount::numeric from public.driver_log_expense(:'trip2', 'fuel', 2500, 'cash', 'Diesel')),
+  (select sum(amount)::numeric from public.my_trip_expenses where amount = 2500),
   2500::numeric);
 select pg_temp.expect_denied('driver cannot log a salary as an expense',
   format('select public.driver_log_expense(%L, ''salary'', 1000)', :'trip2'));
 select pg_temp.expect_denied('driver cannot log an expense with no amount',
   format('select public.driver_log_expense(%L, ''fuel'', 0)', :'trip2'));
-select pg_temp.expect('the expense they logged is theirs to see',
-  (select count(*)::int from public.my_trip_expenses where amount = 2500), 1);
 
 -- A proof of delivery has to land inside this business's folder.
 select pg_temp.expect_denied('a photo from outside the business is refused',
   format('select public.driver_attach_pod(%L, ''%s/trip/%s/pod.jpg'')',
          :'trip2', :'biz_b', :'trip2'));
+select public.driver_attach_pod(:'trip2', format('%s/trip/%s/pod.jpg', :'biz_a', :'trip2'));
 select pg_temp.expect('driver attaches a delivery photo',
-  (select pod_file_url from public.driver_attach_pod(
-     :'trip2', format('%s/trip/%s/pod.jpg', :'biz_a', :'trip2'))),
+  (select pod_file_url from public.my_trips where id = :'trip2'),
   format('%s/trip/%s/pod.jpg', :'biz_a', :'trip2'));
 
 -- --- one driver against another ----------------------------------------------
