@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { supabase, describeError } from '@/lib/supabase'
+import { driverEmail, normalisePhone } from '@/lib/driverLogin'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 
-type Mode = 'sign_in' | 'sign_up'
+type Mode = 'sign_in' | 'sign_up' | 'driver'
 
 export function LoginPage() {
   const [mode, setMode] = useState<Mode>('sign_in')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -21,7 +23,23 @@ export function LoginPage() {
     setSubmitting(true)
 
     try {
-      if (mode === 'sign_in') {
+      if (mode === 'driver') {
+        // The driver types the number the owner entered for them; the address
+        // is built from it here exactly as create-staff built it there.
+        const digits = normalisePhone(phone)
+        if (digits.length < 10) {
+          throw new Error('Enter your 10-digit mobile number.')
+        }
+        const { error: driverError } = await supabase.auth.signInWithPassword({
+          email: driverEmail(digits),
+          password,
+        })
+        if (driverError) {
+          throw new Error(
+            'That number and password do not match. Check with the office — they set it up.',
+          )
+        }
+      } else if (mode === 'sign_in') {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -65,29 +83,51 @@ export function LoginPage() {
           onSubmit={onSubmit}
           className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
-          <Field label="Email" htmlFor="email" required>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={controlClass()}
-              placeholder="you@example.com"
-            />
-          </Field>
+          {mode === 'driver' ? (
+            <Field label="Mobile number" htmlFor="phone" required>
+              <input
+                id="phone"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                required
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className={controlClass()}
+                placeholder="9876543210"
+              />
+            </Field>
+          ) : (
+            <Field label="Email" htmlFor="email" required>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className={controlClass()}
+                placeholder="you@example.com"
+              />
+            </Field>
+          )}
 
           <Field
             label="Password"
             htmlFor="password"
             required
-            hint={mode === 'sign_up' ? 'At least 6 characters' : undefined}
+            hint={
+              mode === 'sign_up'
+                ? 'At least 6 characters'
+                : mode === 'driver'
+                  ? 'The one the office gave you'
+                  : undefined
+            }
           >
             <input
               id="password"
               type="password"
-              autoComplete={mode === 'sign_in' ? 'current-password' : 'new-password'}
+              autoComplete={mode === 'sign_up' ? 'new-password' : 'current-password'}
               required
               minLength={6}
               value={password}
@@ -107,21 +147,37 @@ export function LoginPage() {
           )}
 
           <Button type="submit" fullWidth size="lg" loading={submitting}>
-            {mode === 'sign_in' ? 'Sign in' : 'Create account'}
+            {mode === 'sign_up' ? 'Create account' : 'Sign in'}
           </Button>
+
+          {mode !== 'driver' && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'sign_in' ? 'sign_up' : 'sign_in')
+                setError(null)
+                setNotice(null)
+              }}
+              className="w-full text-center text-sm text-slate-500 hover:text-slate-700"
+            >
+              {mode === 'sign_in'
+                ? 'First time here? Create an account'
+                : 'Already have an account? Sign in'}
+            </button>
+          )}
 
           <button
             type="button"
             onClick={() => {
-              setMode(mode === 'sign_in' ? 'sign_up' : 'sign_in')
+              setMode(mode === 'driver' ? 'sign_in' : 'driver')
               setError(null)
               setNotice(null)
             }}
-            className="w-full text-center text-sm text-slate-500 hover:text-slate-700"
+            className="w-full border-t border-slate-100 pt-3 text-center text-sm font-medium text-brand-700"
           >
-            {mode === 'sign_in'
-              ? 'First time here? Create an account'
-              : 'Already have an account? Sign in'}
+            {mode === 'driver'
+              ? 'Office staff sign in'
+              : 'Driver? Sign in with your mobile number'}
           </button>
         </form>
       </div>

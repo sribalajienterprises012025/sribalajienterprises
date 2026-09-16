@@ -25,6 +25,19 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: '⚙️', roles: ['owner'] },
 ]
 
+/**
+ * A driver's app, which is a different app rather than a filtered one.
+ *
+ * Every other role is looking at the business; a driver is looking at their own
+ * work. Filtering the list above would leave a driver staring at a Dashboard
+ * and a Trips tab that the database will answer with nothing.
+ */
+export const DRIVER_NAV_ITEMS: NavItem[] = [
+  { to: '/my-trips', label: 'My trips', icon: '🚚', primary: true },
+  { to: '/my-money', label: 'My money', icon: '💰', primary: true },
+]
+
 export function visibleNavItems(role: Role | null): NavItem[] {
+  if (role === 'driver') return DRIVER_NAV_ITEMS
   return NAV_ITEMS.filter((item) => !item.roles || (role && item.roles.includes(role)))
 }

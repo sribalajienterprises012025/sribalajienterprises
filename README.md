@@ -104,6 +104,11 @@ feature that would need a native wrapper such as Capacitor.
   was claimed.
 - **Staff access** — an owner invites a helper or a CA by email; the invitee signs
   up and accepts on first sign-in. Roles are changeable, access is revocable.
+- **The driver's own app** — a driver signs in with the mobile number already on
+  their record and sees a different app: the trips assigned to them, meter
+  readings, diesel and toll, a photo of the signed LR, and their own salary and
+  advances. No freight, no client rate, no invoice, no other driver — enforced
+  by the database, not by which screens they are shown.
 - **Activity** — an owner-only audit trail written by database triggers, showing
   who changed what, with from/to values for each changed column.
 
@@ -410,7 +415,28 @@ try a change before it reaches the live app.
 Open the site and create an account. With no invitation waiting, the first
 sign-in offers to create the business; that runs `bootstrap_business()`, which
 makes the business and your owner record in one transaction. From there,
-**Settings → Staff** invites a helper or a CA.
+**Settings → Staff** invites a helper or a CA, and its **Drivers** tab gives a
+driver a login from the number already on their record.
+
+### Giving a driver the app
+
+Add the driver on **Drivers** first, then **Settings → Staff → Drivers → Give a
+login**: their mobile number is their username, and you set the password and
+read it out. They open the same site, tap **Driver? Sign in with your mobile
+number**, and land on their own trips.
+
+No SMS is involved and nothing is emailed — Supabase needs an identifier it
+understands, so the number becomes an address in `drivers.invalid`, a domain
+RFC 2606 reserves so that nothing can ever route to it.
+
+What the login can reach is decided in Postgres, in
+`supabase/migrations/20250101001000_driver_logins.sql`: a restrictive policy
+fences a driver out of every business table, and five views filtered on the
+signed-in driver are the only way they read anything. The money columns are not
+hidden from those views — they are not in them. Writes go through four
+functions, each of which proves the trip is theirs before it touches a row.
+`scripts/test-db.sh` asks all of it directly, the way a driver with a browser
+console would.
 
 ### If storage policies were skipped
 

@@ -7,7 +7,17 @@
  *   supabase gen types typescript --project-id <ref> > src/types/database.ts
  */
 
-export type Role = 'owner' | 'helper' | 'ca'
+export type Role = 'owner' | 'helper' | 'ca' | 'driver'
+
+/**
+ * The roles an email invitation can carry.
+ *
+ * Not `Exclude<Role, 'owner'>`: a driver is not invited by email, because a
+ * driver does not have one. Their login is created by the owner from the phone
+ * number already on the driver record, and the invites table's own check
+ * constraint says the same thing.
+ */
+export type InvitableRole = 'helper' | 'ca'
 export type PartyType = 'client' | 'broker'
 export type BillType = 'gst' | 'non_gst'
 
@@ -61,6 +71,8 @@ export interface AppUser extends Timestamps {
   business_id: string
   name: string
   role: Role
+  /** Set on a driver login, and only on a driver login. */
+  driver_id: string | null
 }
 
 export interface Vehicle extends Timestamps {
@@ -583,7 +595,7 @@ export interface Invite extends Timestamps {
   business_id: string
   email: string
   name: string | null
-  role: Exclude<Role, 'owner'>
+  role: InvitableRole
   invited_by: string | null
   accepted_at: string | null
   accepted_by: string | null
@@ -634,4 +646,71 @@ export interface Quotation extends Timestamps {
   quoted_rate: number | null
   validity_date: string | null
   status: QuotationStatus
+}
+
+// -----------------------------------------------------------------------------
+// The driver's own app.
+//
+// These mirror the views in the driver migration, which are the only way a
+// driver reads anything. The absences are the point: no freight, no commission,
+// no party rate, no other driver.
+// -----------------------------------------------------------------------------
+
+export interface MyTrip {
+  id: string
+  trip_date: string
+  status: TripStatus
+  pickup: string
+  drop_location: string
+  goods_description: string | null
+  lr_number: string | null
+  odometer_start: number | null
+  odometer_end: number | null
+  pod_file_url: string | null
+  notes: string | null
+  vehicle_id: string | null
+  vehicle_reg_no: string | null
+  vehicle_type: string | null
+  party_name: string | null
+}
+
+export interface MyTripExpense {
+  id: string
+  trip_id: string
+  date: string
+  category: ExpenseCategory
+  amount: number
+  payment_mode: PaymentMode
+  note: string | null
+}
+
+export interface MyMoney {
+  driver_id: string
+  driver_name: string
+  salary_type: SalaryType
+  fixed_salary_amount: number | null
+  advances_outstanding: number
+  salary_earned: number
+  salary_paid: number
+  salary_due: number
+  trip_count: number
+}
+
+export interface MyAdvance {
+  id: string
+  date: string
+  amount: number
+  reason: string | null
+  adjusted: boolean
+}
+
+export interface MySalaryRun {
+  id: string
+  period_month: string
+  salary_earned: number
+  advances_deducted: number
+  other_deductions: number
+  net_payable: number
+  amount_paid: number
+  paid_date: string | null
 }

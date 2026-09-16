@@ -29,14 +29,35 @@ const CORS = {
 }
 
 /** Roles this endpoint may create. Owner is deliberately absent. */
-const CREATABLE_ROLES = ['helper', 'ca'] as const
+const CREATABLE_ROLES = ['helper', 'ca', 'driver'] as const
 type CreatableRole = (typeof CREATABLE_ROLES)[number]
+
+/**
+ * A driver signs in with the phone number the owner already has for them,
+ * because a driver with an email address is the exception rather than the rule.
+ *
+ * Supabase Auth needs an identifier it understands, and phone sign-in means an
+ * SMS provider and a cost per message. So the phone number becomes an address
+ * in a domain that is guaranteed never to exist: `.invalid` is reserved by
+ * RFC 2606 precisely so that nothing can ever route to it. Nothing is sent
+ * there, nothing can be. The driver types their number; the app builds the
+ * same address from it.
+ */
+const DRIVER_EMAIL_DOMAIN = 'drivers.invalid'
+
+function driverEmail(phone: string): string {
+  return `${phone}@${DRIVER_EMAIL_DOMAIN}`
+}
 
 interface CreateStaffBody {
   email?: string
   password?: string
   name?: string
   role?: string
+  /** Driver logins only: the number they sign in with. */
+  phone?: string
+  /** Driver logins only: the driver record this login belongs to. */
+  driver_id?: string
 }
 
 function json(body: unknown, status = 200): Response {
@@ -81,23 +102,38 @@ Deno.serve(async (req: Request) => {
     return fail('bad_request', 'Expected a JSON body.', 400)
   }
 
-  const email = (body.email ?? '').trim().toLowerCase()
   const password = body.password ?? ''
   const name = (body.name ?? '').trim()
   const role = body.role as CreatableRole
+  const phone = (body.phone ?? '').replace(/\D/g, '')
+  const driverId = (body.driver_id ?? '').trim()
+
+  if (!CREATABLE_ROLES.includes(role)) {
+    return fail(
+      'invalid_role',
+      'Pick helper, CA or driver. An owner is promoted from an existing member, not created here.',
+      400,
+    )
+  }
+
+  const isDriver = role === 'driver'
+
+  if (isDriver) {
+    if (phone.length < 10 || phone.length > 15) {
+      return fail('invalid_phone', 'Enter the driver\'s 10-digit mobile number.', 400)
+    }
+    if (!driverId) {
+      return fail('no_driver', 'Pick which driver this login is for.', 400)
+    }
+  }
+
+  const email = isDriver ? driverEmail(phone) : (body.email ?? '').trim().toLowerCase()
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return fail('invalid_email', 'Enter a valid email address.', 400)
   }
   if (password.length < 8) {
     return fail('weak_password', 'The password needs at least 8 characters.', 400)
-  }
-  if (!CREATABLE_ROLES.includes(role)) {
-    return fail(
-      'invalid_role',
-      'Pick helper or CA. An owner is promoted from an existing member, not created here.',
-      400,
-    )
   }
 
   // Everything except the auth-account call runs as the caller, under RLS.
@@ -128,6 +164,37 @@ Deno.serve(async (req: Request) => {
     return fail('not_owner', 'Only the business owner can create logins.', 403)
   }
 
+  // The driver record has to be one of this business's, and it has to be free.
+  // Read as the caller, so RLS answers the first question for us: a driver id
+  // from another business simply is not there.
+  let driverName = name
+  if (isDriver) {
+    const { data: driver, error: driverError } = await callerClient
+      .from('drivers')
+      .select('id, name')
+      .eq('id', driverId)
+      .maybeSingle()
+
+    if (driverError || !driver) {
+      return fail('no_driver', 'That driver is not in your business.', 404)
+    }
+    driverName = name || driver.name
+
+    const { data: taken } = await callerClient
+      .from('users')
+      .select('id')
+      .eq('driver_id', driverId)
+      .maybeSingle()
+
+    if (taken) {
+      return fail(
+        'driver_has_login',
+        'That driver already has a login. Remove the old one first if you need to change the number.',
+        409,
+      )
+    }
+  }
+
   const adminClient = createClient(supabaseUrl, secretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
@@ -138,7 +205,7 @@ Deno.serve(async (req: Request) => {
     email,
     password,
     email_confirm: true,
-    user_metadata: { name: name || email.split('@')[0] },
+    user_metadata: { name: driverName || name || email.split('@')[0] },
   })
 
   if (createError || !created?.user) {
@@ -148,7 +215,9 @@ Deno.serve(async (req: Request) => {
     return fail(
       alreadyExists ? 'email_taken' : 'create_failed',
       alreadyExists
-        ? 'That email already has a login. Send them an invitation instead — they will join this business the next time they sign in.'
+        ? isDriver
+          ? 'That mobile number already has a login. Use a different number, or remove the old login first.'
+          : 'That email already has a login. Send them an invitation instead — they will join this business the next time they sign in.'
         : message,
       alreadyExists ? 409 : 400,
     )
@@ -159,8 +228,11 @@ Deno.serve(async (req: Request) => {
   const { error: linkError } = await callerClient.from('users').insert({
     id: created.user.id,
     business_id: profile.business_id,
-    name: name || email.split('@')[0],
+    name: driverName || name || email.split('@')[0],
     role,
+    // The constraint in the driver migration keeps these two honest: a driver
+    // login must name a driver, and no other role may.
+    driver_id: isDriver ? driverId : null,
   })
 
   if (linkError) {
@@ -175,6 +247,12 @@ Deno.serve(async (req: Request) => {
   }
 
   return json({
-    user: { id: created.user.id, email, name: name || email.split('@')[0], role },
+    user: {
+      id: created.user.id,
+      email,
+      name: driverName || name || email.split('@')[0],
+      role,
+      ...(isDriver ? { phone, driver_id: driverId } : {}),
+    },
   })
 })

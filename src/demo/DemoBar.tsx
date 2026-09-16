@@ -5,6 +5,7 @@ const ROLE_LABEL: Record<string, string> = {
   owner: 'Owner',
   helper: 'Helper',
   ca: 'CA',
+  driver: 'Driver',
 }
 
 /**
@@ -62,7 +63,10 @@ export function DemoBar() {
             recalculate, and nothing here touches your live records.
           </p>
           <p>
-            Change the role above to see the permission rules: a{' '}
+            Change the role above to see the permission rules. A{' '}
+            <strong className="font-semibold text-white">driver</strong> gets a
+            different app altogether — their own trips, their own salary, and no
+            rates anywhere. A{' '}
             <strong className="font-semibold text-white">helper</strong> gets trips,
             expenses and invoices but no reports or settings, and a{' '}
             <strong className="font-semibold text-white">CA</strong> reads and exports

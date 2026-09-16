@@ -11,8 +11,15 @@
  * Compiled in only when VITE_DEMO=1, so none of this reaches a real build.
  */
 
-import { buildSeed, BUSINESS_ID, OWNER_ID, type Row, type Tables } from './seed'
-import { VIEWS } from './views'
+import {
+  buildSeed,
+  BUSINESS_ID,
+  DRIVER_USER_ID,
+  OWNER_ID,
+  type Row,
+  type Tables,
+} from './seed'
+import { DRIVER_VIEWS, VIEWS } from './views'
 
 const STORE_KEY = 'balaji-demo-data-v1'
 const SESSION_KEY = 'sb-demo-auth-token'
@@ -190,7 +197,13 @@ function applyEmbeds(rows: Row[], select: string): Row[] {
 
 function runSelect(table: string, params: URSearchParamsLike): Row[] {
   const query = parseQuery(params as URLSearchParams)
-  const source = VIEWS[table] ? VIEWS[table](db) : (db[table] ?? [])
+  // The driver's own views need to know who is asking, the way the real ones
+  // take it from the session rather than from anything the caller sends.
+  const source = DRIVER_VIEWS[table]
+    ? DRIVER_VIEWS[table](db, currentDriverId() ?? '')
+    : VIEWS[table]
+      ? VIEWS[table](db)
+      : (db[table] ?? [])
 
   let rows = source.filter((row) => query.filters.every((f) => f(row)))
 
@@ -244,6 +257,43 @@ const HELPER_WRITABLE = new Set([
   'documents',
 ])
 
+/** The driver record the signed-in demo user is, or null for everyone else. */
+function currentDriverId(): string | null {
+  const id = currentDemoUserId()
+  const row = (db.users ?? []).find((user) => user.id === id)
+  return row?.driver_id ? String(row.driver_id) : null
+}
+
+/** The trip is the caller's, or the call fails the way the real function does. */
+function ownTrip(tripId: string): Row {
+  const driverId = currentDriverId()
+  if (!driverId) {
+    throw new DemoError('Only a driver can do that', '42501', 403)
+  }
+  const trip = (db.trips ?? []).find(
+    (row) => row.id === tripId && String(row.driver_id) === driverId,
+  )
+  if (!trip) throw new DemoError('That trip is not yours', '42501', 403)
+  return trip
+}
+
+/**
+ * Writes a trip from inside a driver function.
+ *
+ * Direct rather than through update(), because update() runs the write checks
+ * that would — correctly — refuse a driver. The real functions are SECURITY
+ * DEFINER for exactly the same reason.
+ */
+function patchTrip(trip: Row, changes: Row): void {
+  db.trips = (db.trips ?? []).map((row) => {
+    if (row.id !== trip.id) return row
+    const next = { ...row, ...changes, updated_at: new Date().toISOString() }
+    audit('trips', 'update', next, row)
+    return next
+  })
+  save(db)
+}
+
 function assertCanWrite(table: string, method: string): void {
   const role = demoUser(currentDemoUserId()).role
   if (role === 'owner') return
@@ -254,7 +304,9 @@ function assertCanWrite(table: string, method: string): void {
     403,
   )
 
-  // A CA reads and exports; every write is refused.
+  // A CA reads and exports; a driver writes only through the driver functions.
+  // Every direct write from either is refused, as the restrictive policies in
+  // the driver migration refuse it in Postgres.
   if (role !== 'helper') throw denied
   if (!HELPER_WRITABLE.has(table)) throw denied
   // A helper may attach a proof of delivery but never delete one.
@@ -449,6 +501,84 @@ function rpc(name: string, body: Row): unknown {
       return uuid()
     }
 
+    // --- the driver's own app ------------------------------------------------
+    //
+    // In Postgres these are SECURITY DEFINER functions, which exist because a
+    // policy cannot say "these two columns and no others". Each one starts by
+    // proving the trip belongs to the caller; so does each one here.
+
+    case 'driver_log_odometer': {
+      const trip = ownTrip(String(body.p_trip_id))
+      if (['closed', 'cancelled'].includes(String(trip.status))) {
+        throw new DemoError('That trip is closed', '42501', 403)
+      }
+      const start = body.p_start == null ? trip.odometer_start : Number(body.p_start)
+      const end = body.p_end == null ? trip.odometer_end : Number(body.p_end)
+      if (start != null && end != null && Number(end) < Number(start)) {
+        throw new DemoError('The closing reading is below the opening one', '22023', 400)
+      }
+      patchTrip(trip, { odometer_start: start ?? null, odometer_end: end ?? null })
+      return null
+    }
+
+    case 'driver_set_trip_status': {
+      const trip = ownTrip(String(body.p_trip_id))
+      const next = String(body.p_status)
+      if (!['in_transit', 'delivered'].includes(next)) {
+        throw new DemoError(`A driver cannot set a trip to ${next}`, '42501', 403)
+      }
+      if (['closed', 'cancelled'].includes(String(trip.status))) {
+        throw new DemoError('That trip is closed', '42501', 403)
+      }
+      patchTrip(trip, { status: next })
+      return null
+    }
+
+    case 'driver_log_expense': {
+      const trip = ownTrip(String(body.p_trip_id))
+      const category = String(body.p_category)
+      if (!['fuel', 'toll', 'other'].includes(category)) {
+        throw new DemoError(`A driver cannot log a ${category} expense`, '42501', 403)
+      }
+      const amount = Number(body.p_amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new DemoError('An amount is needed', '23514', 400)
+      }
+      const note = String(body.p_note ?? '').trim()
+      if (category === 'other' && note === '') {
+        throw new DemoError('Say what the expense was for', '23514', 400)
+      }
+      insert('expenses', {
+        business_id: BUSINESS_ID,
+        category,
+        vehicle_id: trip.vehicle_id ?? null,
+        trip_id: trip.id,
+        date: body.p_date ?? new Date().toISOString().slice(0, 10),
+        amount,
+        payment_mode: body.p_payment_mode ?? 'cash',
+        note: note === '' ? null : note,
+      })
+      return null
+    }
+
+    case 'driver_attach_pod': {
+      const trip = ownTrip(String(body.p_trip_id))
+      const path = String(body.p_file_url ?? '').trim()
+      if (path === '') throw new DemoError('No file was given', '23514', 400)
+      if (path.split('/')[0] !== BUSINESS_ID) {
+        throw new DemoError('That file does not belong to this business', '42501', 403)
+      }
+      patchTrip(trip, { pod_file_url: path })
+      insert('documents', {
+        business_id: BUSINESS_ID,
+        owner_type: 'trip',
+        owner_id: trip.id,
+        file_url: path,
+        doc_type: 'pod',
+      })
+      return null
+    }
+
     case 'bootstrap_business':
       throw new Error('This demo already has a business set up.')
 
@@ -479,6 +609,12 @@ export const DEMO_USERS = [
     name: 'Office \u2014 Sridevi',
     role: 'helper',
     email: 'office@balaji.demo',
+  },
+  {
+    id: DRIVER_USER_ID,
+    name: 'Ramesh Yadav',
+    role: 'driver',
+    email: 'ramesh@balaji.demo',
   },
   {
     id: 'u0000000-0000-4000-8000-000000000003',

@@ -63,3 +63,20 @@ export function useCanEdit(): boolean {
 export function useIsOwner(): boolean {
   return useRole() === 'owner'
 }
+
+/**
+ * The driver record this login belongs to, or null for everybody else.
+ *
+ * Used as a React Query key rather than as a filter: the filtering is done by
+ * the database, which takes the driver from the session and not from anything
+ * the browser sends.
+ */
+export function useDriverId(): string | null {
+  const { profile } = useAuth()
+  return profile?.driver_id ?? null
+}
+
+/** True on a driver's login. The driver app is a different app. */
+export function useIsDriver(): boolean {
+  return useRole() === 'driver'
+}

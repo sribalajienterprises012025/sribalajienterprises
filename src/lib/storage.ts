@@ -143,3 +143,29 @@ export async function deleteDocument(document: StoredDocument): Promise<void> {
   const { error } = await supabase.from('documents').delete().eq('id', document.id)
   if (error) throw error
 }
+
+/**
+ * Uploads a delivery photo for a driver, and nothing else.
+ *
+ * Separate from uploadDocument because a driver cannot write the documents
+ * table — the driver migration fences them out of it. The metadata row is
+ * written server-side by driver_attach_pod(), which re-checks that the file
+ * landed in this business's folder before it records anything.
+ *
+ * Returns the storage path, which is what the RPC wants.
+ */
+export async function uploadTripPhoto(params: {
+  businessId: string
+  tripId: string
+  file: File
+}): Promise<string> {
+  const { businessId, tripId, file } = params
+  const path = objectPath(businessId, 'trip', tripId, file.name)
+
+  const { error } = await supabase.storage
+    .from(DOCUMENTS_BUCKET)
+    .upload(path, file, { contentType: file.type || undefined, upsert: false })
+
+  if (error) throw error
+  return path
+}

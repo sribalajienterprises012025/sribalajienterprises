@@ -564,6 +564,132 @@ export function auditFeed(t: Tables): Row[] {
 }
 
 /** Views are computed on read, so a write to a base table moves all of them. */
+
+// --- the driver's own app ----------------------------------------------------
+//
+// In Postgres these are SECURITY DEFINER views whose where clause filters on
+// the signed-in driver. Here the same filter is applied explicitly, and the
+// same columns are absent: no freight, no commission, no other driver.
+
+function myTrips(t: Tables, driverId: string): Row[] {
+  const vehicles = new Map((t.vehicles ?? []).map((v) => [str(v.id), v]))
+  const clients = new Map((t.clients ?? []).map((c) => [str(c.id), c]))
+  const brokers = new Map((t.brokers ?? []).map((b) => [str(b.id), b]))
+
+  return (t.trips ?? [])
+    .filter((trip) => str(trip.driver_id) === driverId && trip.status !== 'cancelled')
+    .map((trip) => {
+      const vehicle = vehicles.get(str(trip.vehicle_id))
+      const party =
+        trip.party_type === 'client'
+          ? clients.get(str(trip.party_id))
+          : brokers.get(str(trip.party_id))
+
+      return {
+        id: trip.id,
+        trip_date: trip.trip_date,
+        status: trip.status,
+        pickup: trip.pickup,
+        drop_location: trip.drop_location,
+        goods_description: trip.goods_description ?? null,
+        lr_number: trip.lr_number ?? null,
+        odometer_start: trip.odometer_start ?? null,
+        odometer_end: trip.odometer_end ?? null,
+        pod_file_url: trip.pod_file_url ?? null,
+        notes: trip.notes ?? null,
+        vehicle_id: trip.vehicle_id ?? null,
+        vehicle_reg_no: vehicle?.reg_no ?? null,
+        vehicle_type: vehicle?.type ?? null,
+        party_name: party?.name ?? null,
+      }
+    })
+    .sort((a, b) => str(b.trip_date).localeCompare(str(a.trip_date)))
+}
+
+function myTripExpenses(t: Tables, driverId: string): Row[] {
+  const mine = new Set(
+    (t.trips ?? []).filter((trip) => str(trip.driver_id) === driverId).map((trip) => str(trip.id)),
+  )
+
+  return (t.expenses ?? [])
+    .filter((expense) => expense.trip_id && mine.has(str(expense.trip_id)))
+    .map((expense) => ({
+      id: expense.id,
+      trip_id: expense.trip_id,
+      date: expense.date,
+      category: expense.category,
+      amount: expense.amount,
+      payment_mode: expense.payment_mode,
+      note: expense.note ?? null,
+    }))
+}
+
+function myMoney(t: Tables, driverId: string): Row[] {
+  const driver = (t.drivers ?? []).find((d) => str(d.id) === driverId)
+  if (!driver) return []
+
+  const advances = (t.driver_advances ?? []).filter((a) => str(a.driver_id) === driverId)
+  const runs = (t.driver_salary_payments ?? []).filter((r) => str(r.driver_id) === driverId)
+  const trips = (t.trips ?? []).filter(
+    (trip) => str(trip.driver_id) === driverId && trip.status !== 'cancelled',
+  )
+
+  return [
+    {
+      driver_id: driver.id,
+      driver_name: driver.name,
+      salary_type: driver.salary_type,
+      fixed_salary_amount: driver.fixed_salary_amount ?? null,
+      advances_outstanding: sum(
+        advances.filter((a) => !a.adjusted),
+        'amount',
+      ),
+      salary_earned: sum(runs, 'salary_earned'),
+      salary_paid: sum(runs, 'amount_paid'),
+      salary_due: sum(runs, 'net_payable') - sum(runs, 'amount_paid'),
+      trip_count: trips.length,
+    },
+  ]
+}
+
+function myAdvances(t: Tables, driverId: string): Row[] {
+  return (t.driver_advances ?? [])
+    .filter((a) => str(a.driver_id) === driverId)
+    .map((a) => ({
+      id: a.id,
+      date: a.date,
+      amount: a.amount,
+      reason: a.reason ?? null,
+      adjusted: a.adjusted ?? false,
+    }))
+    .sort((a, b) => str(b.date).localeCompare(str(a.date)))
+}
+
+function mySalaryRuns(t: Tables, driverId: string): Row[] {
+  return (t.driver_salary_payments ?? [])
+    .filter((r) => str(r.driver_id) === driverId)
+    .map((r) => ({
+      id: r.id,
+      period_month: r.period_month,
+      salary_earned: r.salary_earned,
+      advances_deducted: r.advances_deducted,
+      other_deductions: r.other_deductions,
+      net_payable: r.net_payable,
+      amount_paid: r.amount_paid,
+      paid_date: r.paid_date ?? null,
+    }))
+    .sort((a, b) => str(b.period_month).localeCompare(str(a.period_month)))
+}
+
+/** Keyed separately from VIEWS because each one needs to know who is asking. */
+export const DRIVER_VIEWS: Record<string, (t: Tables, driverId: string) => Row[]> = {
+  my_trips: myTrips,
+  my_trip_expenses: myTripExpenses,
+  my_money: myMoney,
+  my_advances: myAdvances,
+  my_salary_runs: mySalaryRuns,
+}
+
 export const VIEWS: Record<string, (t: Tables) => Row[]> = {
   trip_financials: tripFinancials,
   client_ledger: clientLedger,

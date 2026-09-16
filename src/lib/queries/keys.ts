@@ -79,6 +79,15 @@ export const queryKeys = {
   audit: (businessId: string, filters?: unknown) =>
     ['audit', businessId, filters ?? null] as const,
 
+  // The driver's own app. Keyed on the driver rather than the business,
+  // because that is what the views are filtered by.
+  myTrips: (driverId: string) => ['my-trips', driverId] as const,
+  myTripExpenses: (driverId: string, tripId: string) =>
+    ['my-trip-expenses', driverId, tripId] as const,
+  myMoney: (driverId: string) => ['my-money', driverId] as const,
+  myAdvances: (driverId: string) => ['my-advances', driverId] as const,
+  mySalaryRuns: (driverId: string) => ['my-salary-runs', driverId] as const,
+
   openingBalances: (businessId: string) => ['opening-balances', businessId] as const,
   quotations: (businessId: string, status?: unknown) =>
     ['quotations', businessId, status ?? null] as const,

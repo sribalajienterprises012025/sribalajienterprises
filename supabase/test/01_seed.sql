@@ -95,3 +95,30 @@ values (:'biz_b', 'MH 12 XX 0001', 'Tipper', 90000);
 
 insert into public.clients (business_id, name)
 values (:'biz_b', 'Rival Client Pvt Ltd');
+
+-- --- drivers with logins ------------------------------------------------------
+--
+-- Two of them, in the same business, for the same reason there are two
+-- businesses: one driver cannot prove that a driver sees only their own work.
+-- Ramesh has the trips, the advance and the salary run; Suresh has nothing but
+-- a login, and every assertion about what Ramesh must not see is written
+-- against what belongs to Suresh.
+
+\set drv_a2 44444444-0000-0000-0000-000000000002
+\set drv_login_a 11111111-0000-0000-0000-000000000004
+\set drv2_login_a 11111111-0000-0000-0000-000000000005
+
+insert into auth.users (id, email) values
+  (:'drv_login_a',  '9876543210@drivers.invalid'),
+  (:'drv2_login_a', '9000000002@drivers.invalid');
+
+insert into public.drivers (id, business_id, name, phone, salary_type, fixed_salary_amount)
+values (:'drv_a2', :'biz_a', 'Suresh Kumar', '9000000002', 'fixed', 18000);
+
+insert into public.users (id, business_id, name, role, driver_id) values
+  (:'drv_login_a',  :'biz_a', 'Ramesh Yadav', 'driver', :'drv_a'),
+  (:'drv2_login_a', :'biz_a', 'Suresh Kumar', 'driver', :'drv_a2');
+
+-- Suresh's advance. Ramesh must never see it, in any view, by any route.
+insert into public.driver_advances (business_id, driver_id, date, amount, reason, adjusted)
+values (:'biz_a', :'drv_a2', current_date - 6, 5000, 'Advance', false);

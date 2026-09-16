@@ -104,6 +104,22 @@ jobs:
             || { echo "::error::AuthProvider treats a failed profile read as 'not onboarded' again. A dropped connection now offers to create a second business."; exit 1; }
           echo "an app switch keeps the screen it came back to"
 
+      # A driver signs in with a phone number turned into an address in a
+      # domain that cannot exist. The app builds that address to sign in with;
+      # the Edge Function builds it to create the login. If the two ever name
+      # different domains, every driver login created after that point is one
+      # nobody can sign in to, and nothing fails until a driver tries.
+      - name: The driver sign-in domain must match on both sides
+        run: |
+          set -euo pipefail
+          app=$(grep -oE "DRIVER_EMAIL_DOMAIN = '[^']+'" src/lib/driverLogin.ts | head -1)
+          fn=$(grep -oE "DRIVER_EMAIL_DOMAIN = '[^']+'" supabase/functions/create-staff/index.ts | head -1)
+          test -n "$app" && test -n "$fn" \
+            || { echo "::error::one side no longer declares DRIVER_EMAIL_DOMAIN"; exit 1; }
+          test "$app" = "$fn" \
+            || { echo "::error::the app signs in at $app but create-staff creates logins at $fn"; exit 1; }
+          echo "driver sign-in domain agrees: $app"
+
       # The storage policies live in two files — the migration, and a copy to
       # run by hand where the migrating role cannot create them. Two copies of
       # a security rule that can drift is how one quietly becomes wrong.

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { AppUser, AuditEntry, Invite, Role } from '@/types'
+import type { AppUser, AuditEntry, Invite, Role, InvitableRole } from '@/types'
 
 export async function listStaff(businessId: string): Promise<AppUser[]> {
   const { data, error } = await supabase
@@ -44,7 +44,7 @@ export async function listInvites(businessId: string): Promise<Invite[]> {
 
 export async function createInvite(
   businessId: string,
-  input: { email: string; name: string | null; role: Exclude<Role, 'owner'> },
+  input: { email: string; name: string | null; role: InvitableRole },
 ): Promise<Invite> {
   const { data: auth } = await supabase.auth.getUser()
 
@@ -119,7 +119,10 @@ export interface CreatedStaff {
   id: string
   email: string
   name: string
-  role: Exclude<Role, 'owner'>
+  role: InvitableRole | 'driver'
+  /** Driver logins only: the number they sign in with. */
+  phone?: string
+  driver_id?: string
 }
 
 export interface CreateStaffError {
@@ -142,7 +145,7 @@ export async function createStaffLogin(input: {
   email: string
   password: string
   name: string
-  role: Exclude<Role, 'owner'>
+  role: InvitableRole
 }): Promise<CreatedStaff> {
   const { data, error } = await supabase.functions.invoke('create-staff', {
     body: input,
@@ -152,6 +155,35 @@ export async function createStaffLogin(input: {
     throw new Error(await describeFunctionError(error))
   }
 
+  if (data?.error) throw new Error(data.error.message ?? 'Could not create the login.')
+  return data.user as CreatedStaff
+}
+
+/**
+ * Creates a driver's login from the phone number already on their record.
+ *
+ * Same function, same reason — the admin API needs the secret key — but no
+ * email address anywhere: the number is the username, and create-staff turns
+ * it into an address in a domain that cannot receive mail. See
+ * src/lib/driverLogin.ts.
+ */
+export async function createDriverLogin(input: {
+  driverId: string
+  phone: string
+  password: string
+  name: string
+}): Promise<CreatedStaff> {
+  const { data, error } = await supabase.functions.invoke('create-staff', {
+    body: {
+      role: 'driver',
+      driver_id: input.driverId,
+      phone: input.phone,
+      password: input.password,
+      name: input.name,
+    },
+  })
+
+  if (error) throw new Error(await describeFunctionError(error))
   if (data?.error) throw new Error(data.error.message ?? 'Could not create the login.')
   return data.user as CreatedStaff
 }

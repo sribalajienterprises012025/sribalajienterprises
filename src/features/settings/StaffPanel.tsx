@@ -21,13 +21,15 @@ import {
   removeStaff,
   updateStaffRole,
 } from '@/lib/queries/staff'
-import type { AppUser, Invite, Role } from '@/types'
+import type { AppUser, Invite, Role, InvitableRole } from '@/types'
 import { CreateLoginPanel } from './CreateLoginPanel'
+import { DriverLoginsPanel } from './DriverLoginsPanel'
 
 const ROLE_NOTES: Record<Role, string> = {
   owner: 'Everything, including settings, reports and staff.',
   helper: 'Trips, expenses and invoices. No reports or settings.',
   ca: 'Reads everything and exports. Cannot change any record.',
+  driver: 'Their own trips and their own salary. Nothing else in the business.',
 }
 
 /**
@@ -53,11 +55,11 @@ export function StaffPanel() {
 
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [role, setRole] = useState<Exclude<Role, 'owner'>>('helper')
+  const [role, setRole] = useState<InvitableRole>('helper')
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<AppUser | null>(null)
   const [revoking, setRevoking] = useState<Invite | null>(null)
-  const [addMode, setAddMode] = useState<'invite' | 'create'>('invite')
+  const [addMode, setAddMode] = useState<'invite' | 'create' | 'drivers'>('invite')
 
   const staffQuery = useQuery({
     queryKey: queryKeys.staff(businessId),
@@ -170,24 +172,36 @@ export function StaffPanel() {
 
                   {!isSelf && (
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                      <select
-                        value={member.role}
-                        onChange={(event) =>
-                          roleMutation.mutate({
-                            id: member.id,
-                            next: event.target.value as Role,
-                          })
-                        }
-                        aria-label={`Role for ${member.name}`}
-                        className="min-h-[36px] rounded-lg border border-slate-300 bg-white px-2 text-sm"
-                      >
-                        <option value="owner">Owner</option>
-                        <option value="helper">Helper</option>
-                        <option value="ca">CA</option>
-                      </select>
+                      {/* A driver's role is not a dropdown. The login is tied to
+                          a driver record, and every office role would leave that
+                          link dangling — the database refuses it outright. To
+                          change what they are, remove the login and add them as
+                          staff. */}
+                      {member.role === 'driver' ? (
+                        <p className="text-xs text-slate-500">
+                          Signs in with their mobile number.
+                        </p>
+                      ) : (
+                        <select
+                          value={member.role}
+                          onChange={(event) =>
+                            roleMutation.mutate({
+                              id: member.id,
+                              next: event.target.value as Role,
+                            })
+                          }
+                          aria-label={`Role for ${member.name}`}
+                          className="min-h-[36px] rounded-lg border border-slate-300 bg-white px-2 text-sm"
+                        >
+                          <option value="owner">Owner</option>
+                          <option value="helper">Helper</option>
+                          <option value="ca">CA</option>
+                        </select>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="ml-auto"
                         onClick={() => setRemoving(member)}
                       >
                         Remove access
@@ -260,9 +274,23 @@ export function StaffPanel() {
         >
           Create a login
         </button>
+        <button
+          type="button"
+          onClick={() => setAddMode('drivers')}
+          className={[
+            'inline-flex min-h-[40px] items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
+            addMode === 'drivers'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500',
+          ].join(' ')}
+        >
+          Drivers
+        </button>
       </div>
 
       {addMode === 'create' && <CreateLoginPanel />}
+
+      {addMode === 'drivers' && <DriverLoginsPanel />}
 
       {addMode === 'invite' && (
         <Card>
@@ -294,7 +322,7 @@ export function StaffPanel() {
                   id="invite_role"
                   value={role}
                   onChange={(event) =>
-                    setRole(event.target.value as Exclude<Role, 'owner'>)
+                    setRole(event.target.value as InvitableRole)
                   }
                   className={controlClass()}
                 >

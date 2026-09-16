@@ -6,9 +6,9 @@ import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { useToast } from '@/hooks/useToast'
 import { createStaffLogin, type CreatedStaff } from '@/lib/queries/staff'
-import type { Role } from '@/types'
+import type { InvitableRole } from '@/types'
 
-const ROLE_NOTES: Record<Exclude<Role, 'owner'>, string> = {
+const ROLE_NOTES: Record<InvitableRole, string> = {
   helper: 'Trips, expenses and invoices. No reports or settings.',
   ca: 'Reads everything and exports. Cannot change any record.',
 }
@@ -42,7 +42,7 @@ export function CreateLoginPanel() {
 
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [role, setRole] = useState<Exclude<Role, 'owner'>>('helper')
+  const [role, setRole] = useState<InvitableRole>('helper')
   const [password, setPassword] = useState(suggestPassword)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<CreatedStaff | null>(null)
@@ -110,7 +110,7 @@ export function CreateLoginPanel() {
             <select
               id="create_role"
               value={role}
-              onChange={(event) => setRole(event.target.value as Exclude<Role, 'owner'>)}
+              onChange={(event) => setRole(event.target.value as InvitableRole)}
               className={controlClass()}
             >
               <option value="helper">Helper</option>

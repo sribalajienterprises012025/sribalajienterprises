@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   owner: 'Owner',
   helper: 'Helper',
   ca: 'CA',
+  driver: 'Driver',
 }
 
 /** Falls back to a dash, matching how the rest of the app shows a missing value. */

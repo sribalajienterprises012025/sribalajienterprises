@@ -93,8 +93,9 @@ select pg_temp.expect('owner A sees only own clients',
   (select count(*)::int from public.clients), 1);
 select pg_temp.expect('owner A sees only own business row',
   (select count(*)::int from public.businesses), 1);
+-- Five: the owner, the helper, the CA and the two drivers with logins.
 select pg_temp.expect('owner A sees own staff',
-  (select count(*)::int from public.users), 3);
+  (select count(*)::int from public.users), 5);
 
 reset role;
 set role authenticated;
@@ -990,5 +991,177 @@ select set_config('request.jwt.claim.sub', :'owner_a', false);
 delete from public.documents where owner_id = :'trip1';
 select pg_temp.expect('owner can delete a document record',
   (select count(*)::int from public.documents where owner_id = :'trip1'), 0);
+
+reset role;
+
+-- =============================================================================
+-- A driver sees their own work and their own money, and nothing else
+--
+-- This is the whole point of the driver role, and the app is not where it is
+-- decided: a driver holds the same publishable key as the owner and can ask
+-- Postgres anything. So every one of these is asked of the database directly,
+-- the way a driver with a browser console would ask it.
+-- =============================================================================
+\set biz_b bbbbbbbb-0000-0000-0000-00000000000b
+\set drv_a2 44444444-0000-0000-0000-000000000002
+\set drv_login_a 11111111-0000-0000-0000-000000000004
+\set drv2_login_a 11111111-0000-0000-0000-000000000005
+\set trip2 77777777-0000-0000-0000-000000000002
+
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'drv_login_a', false);
+
+-- --- the fence: the tables answer nothing ------------------------------------
+select pg_temp.expect('driver cannot read the trips table',
+  (select count(*)::int from public.trips), 0);
+select pg_temp.expect('driver cannot read invoices',
+  (select count(*)::int from public.invoices), 0);
+select pg_temp.expect('driver cannot read clients',
+  (select count(*)::int from public.clients), 0);
+select pg_temp.expect('driver cannot read expenses',
+  (select count(*)::int from public.expenses), 0);
+select pg_temp.expect('driver cannot read the driver list',
+  (select count(*)::int from public.drivers), 0);
+select pg_temp.expect('driver cannot read the advances table',
+  (select count(*)::int from public.driver_advances), 0);
+select pg_temp.expect('driver cannot read salary runs',
+  (select count(*)::int from public.driver_salary_payments), 0);
+select pg_temp.expect('driver cannot read documents',
+  (select count(*)::int from public.documents), 0);
+select pg_temp.expect('driver cannot read the audit log',
+  (select count(*)::int from public.audit_log), 0);
+select pg_temp.expect('driver cannot read the P&L',
+  (select count(*)::int from public.monthly_pl), 0);
+select pg_temp.expect('driver cannot read the driver ledger',
+  (select count(*)::int from public.driver_ledger), 0);
+select pg_temp.expect('driver cannot read the client ledger',
+  (select count(*)::int from public.client_ledger), 0);
+
+-- Two exceptions, both needed by the driver's own session.
+select pg_temp.expect('driver reads their own profile and no other',
+  (select count(*)::int from public.users), 1);
+select pg_temp.expect('and it is their own',
+  (select id from public.users), :'drv_login_a'::uuid);
+select pg_temp.expect('driver may know who they drive for',
+  (select count(*)::int from public.businesses), 1);
+
+-- --- what they do see --------------------------------------------------------
+select pg_temp.expect('driver sees their own trips',
+  (select count(*)::int from public.my_trips), 2);
+select pg_temp.expect('and they are exactly the two that are theirs',
+  (select count(*)::int from public.my_trips
+   where id in (:'trip1'::uuid, :'trip2'::uuid)), 2);
+
+-- The money columns are not filtered out of the answer — they are not in the
+-- view at all, so there is nothing to filter.
+select pg_temp.expect('my_trips carries no money column',
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'my_trips'
+      and column_name in ('freight_amount', 'broker_commission',
+                          'advance_received', 'tds_deducted')), 0);
+select pg_temp.expect('but it does carry what a driver needs',
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'my_trips'
+      and column_name in ('pickup', 'drop_location', 'vehicle_reg_no',
+                          'odometer_start', 'party_name')), 5);
+
+select pg_temp.expect('driver sees their own salary',
+  (select salary_earned::numeric from public.my_money), 22000::numeric);
+select pg_temp.expect('driver sees their own outstanding advance',
+  (select advances_outstanding::numeric from public.my_money), 3000::numeric);
+select pg_temp.expect('my_money has one row, theirs',
+  (select count(*)::int from public.my_money), 1);
+select pg_temp.expect('driver sees their own advances only',
+  (select sum(amount)::numeric from public.my_advances), 3000::numeric);
+select pg_temp.expect('the other driver''s 5,000 is not among them',
+  (select count(*)::int from public.my_advances where amount = 5000), 0);
+select pg_temp.expect('driver sees their own salary runs',
+  (select count(*)::int from public.my_salary_runs), 1);
+
+-- --- writes: the tables refuse, the functions decide -------------------------
+select pg_temp.expect_denied('driver cannot insert an expense directly',
+  format('insert into public.expenses (business_id, category, amount) values (%L, ''fuel'', 100)',
+         :'biz_a'));
+select pg_temp.expect_denied('driver cannot insert a trip',
+  format('insert into public.trips (business_id, party_type, party_id, pickup, drop_location) '
+         'values (%L, ''client'', %L, ''X'', ''Y'')', :'biz_a', :'cli_a'));
+select pg_temp.expect_no_write('driver cannot promote themselves',
+  format('update public.users set role = ''owner'' where id = %L', :'drv_login_a'),
+  format('select role from public.users where id = %L', :'drv_login_a'),
+  'driver');
+
+-- A direct update on a fenced table matches no rows rather than raising, so
+-- the check is that the value did not move. Asked as the owner, because the
+-- driver cannot see the row either way.
+update public.trips set freight_amount = 1 where id = :'trip1';
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'owner_a', false);
+-- Asked as "is it still more than the 1 the driver tried to set", so the check
+-- does not go stale the moment an assertion above it edits this trip.
+select pg_temp.expect('the driver''s attempt did not touch the freight',
+  (select freight_amount > 1 from public.trips where id = :'trip1'), true);
+
+-- --- the functions -----------------------------------------------------------
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'drv_login_a', false);
+
+select pg_temp.expect('driver logs a closing meter reading',
+  (select odometer_end from public.driver_log_odometer(:'trip2', null, 181000)), 181000);
+select pg_temp.expect_denied('a closing reading below the opening one is refused',
+  format('select public.driver_log_odometer(%L, 181000, 180000)', :'trip2'));
+select pg_temp.expect('driver marks a trip delivered',
+  (select status from public.driver_set_trip_status(:'trip2', 'delivered')), 'delivered');
+select pg_temp.expect_denied('driver cannot close a trip',
+  format('select public.driver_set_trip_status(%L, ''closed'')', :'trip2'));
+select pg_temp.expect('driver logs diesel against their own trip',
+  (select amount::numeric from public.driver_log_expense(:'trip2', 'fuel', 2500, 'cash', 'Diesel')),
+  2500::numeric);
+select pg_temp.expect_denied('driver cannot log a salary as an expense',
+  format('select public.driver_log_expense(%L, ''salary'', 1000)', :'trip2'));
+select pg_temp.expect_denied('driver cannot log an expense with no amount',
+  format('select public.driver_log_expense(%L, ''fuel'', 0)', :'trip2'));
+select pg_temp.expect('the expense they logged is theirs to see',
+  (select count(*)::int from public.my_trip_expenses where amount = 2500), 1);
+
+-- A proof of delivery has to land inside this business's folder.
+select pg_temp.expect_denied('a photo from outside the business is refused',
+  format('select public.driver_attach_pod(%L, ''%s/trip/%s/pod.jpg'')',
+         :'trip2', :'biz_b', :'trip2'));
+select pg_temp.expect('driver attaches a delivery photo',
+  (select pod_file_url from public.driver_attach_pod(
+     :'trip2', format('%s/trip/%s/pod.jpg', :'biz_a', :'trip2'))),
+  format('%s/trip/%s/pod.jpg', :'biz_a', :'trip2'));
+
+-- --- one driver against another ----------------------------------------------
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'drv2_login_a', false);
+
+select pg_temp.expect('the other driver has no trips of their own',
+  (select count(*)::int from public.my_trips), 0);
+select pg_temp.expect('and sees their own advance, not Ramesh''s',
+  (select sum(amount)::numeric from public.my_advances), 5000::numeric);
+select pg_temp.expect_denied('and cannot touch a trip that is not theirs',
+  format('select public.driver_log_odometer(%L, null, 999999)', :'trip1'));
+select pg_temp.expect_denied('nor log an expense against it',
+  format('select public.driver_log_expense(%L, ''fuel'', 100)', :'trip1'));
+select pg_temp.expect_denied('nor attach a photo to it',
+  format('select public.driver_attach_pod(%L, ''%s/trip/%s/pod.jpg'')',
+         :'trip1', :'biz_a', :'trip1'));
+
+-- --- everyone else is unaffected ---------------------------------------------
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', :'help_a', false);
+select pg_temp.expect('a helper still reads a trip, money and all',
+  (select count(*)::int from public.trips
+   where id = :'trip1' and freight_amount > 0), 1);
+select pg_temp.expect('and the client list the driver cannot see',
+  (select count(*)::int from public.clients), 1);
+select pg_temp.expect_denied('and cannot call a driver function',
+  format('select public.driver_log_odometer(%L, null, 1)', :'trip1'));
 
 reset role;

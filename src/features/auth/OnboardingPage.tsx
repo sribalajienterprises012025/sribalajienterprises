@@ -9,7 +9,7 @@ import { Field } from '@/components/ui/Field'
 import { controlClass } from '@/components/ui/control'
 import { LoadingState } from '@/components/ui/States'
 import { roleLabel } from '@/lib/roles'
-import type { Role } from '@/types'
+import type { InvitableRole } from '@/types'
 import { queryKeys } from '@/lib/queries/keys'
 
 /**
@@ -69,7 +69,7 @@ function AcceptInvite({
 }: {
   // Narrowed to what an invitation can actually carry — an owner is never
   // invited by email, only promoted from an existing member.
-  businessRole: Exclude<Role, 'owner'>
+  businessRole: InvitableRole
   email: string
   onJoined: () => Promise<void>
   onSignOut: () => Promise<void>

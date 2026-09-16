@@ -25,6 +25,8 @@ function monthStart(offset: number): string {
 
 export const BUSINESS_ID = 'b0000000-0000-4000-8000-000000000001'
 export const OWNER_ID = 'u0000000-0000-4000-8000-000000000001'
+/** Ramesh's own login, so the driver's app can be seen from inside it. */
+export const DRIVER_USER_ID = 'u0000000-0000-4000-8000-000000000004'
 
 const V = {
   container: 'v0000000-0000-4000-8000-000000000001',
@@ -90,6 +92,14 @@ export function buildSeed(): Tables {
         name: 'Rao & Associates',
         role: 'ca',
         ...stamp(90),
+      },
+      {
+        id: DRIVER_USER_ID,
+        business_id: BUSINESS_ID,
+        name: 'Ramesh Yadav',
+        role: 'driver',
+        driver_id: D.ramesh,
+        ...stamp(60),
       },
     ],
 
