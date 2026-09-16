@@ -5,6 +5,7 @@ import { SetupRequiredPage } from '@/features/auth/SetupRequiredPage'
 import { AuthProvider } from './AuthProvider'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ToastProvider } from './ToastProvider'
+import { UpdateBanner } from './UpdateBanner'
 import { AppRoutes } from './routes'
 
 const IS_DEMO = import.meta.env.VITE_DEMO === '1'
@@ -45,6 +46,7 @@ export function App() {
         <Router>
           <AuthProvider>
             <ToastProvider>
+              <UpdateBanner />
               <AppRoutes />
             </ToastProvider>
           </AuthProvider>

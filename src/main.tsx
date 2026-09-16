@@ -23,10 +23,15 @@ async function bootstrap() {
     const { mountDemoBar } = await import('./demo/mount')
     mountDemoBar()
   } else {
-    // Installs the service worker and swaps in a new build as soon as one is
-    // available, so a phone left on the home screen does not sit on stale code.
+    // Installs the service worker, and when a new build is waiting, offers it
+    // instead of taking it. Swapping it in automatically reloads every open
+    // tab, which throws away whatever was being typed at that moment.
     const { registerSW } = await import('virtual:pwa-register')
-    registerSW({ immediate: true })
+    const { announceUpdate } = await import('./app/updates')
+    const updateSW = registerSW({
+      immediate: true,
+      onNeedRefresh: () => announceUpdate(() => void updateSW(true)),
+    })
   }
 
   createRoot(rootElement!).render(
